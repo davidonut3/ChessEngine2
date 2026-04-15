@@ -2,6 +2,8 @@ pub mod utils;
 pub mod parsing;
 pub mod fen;
 pub mod move_gen;
+pub mod fish;
+pub mod tests;
 
 use crate::utils::*;
 use crate::fen::Fen;
