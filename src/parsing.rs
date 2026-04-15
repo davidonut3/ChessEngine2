@@ -1,5 +1,7 @@
 use crate::utils::*;
 
+// -------------------- LAN --------------------
+
 /// Checks if given lan is valid
 pub fn is_valid_lan(lan: &str) -> bool {
     if lan.len() != 2 { return false }
@@ -96,6 +98,8 @@ pub fn lan_to_bitboard(lan: &str) -> u64 {
 
     1u64 << (rank * 8) + file
 }
+
+// -------------------- Board --------------------
 
 /// Maps piece index to its char
 pub fn piece_to_char(piece: usize) -> char {
@@ -194,12 +198,10 @@ pub fn fen_notation_to_board(board: &str) -> Result<FenArray, String> {
         if file != 8 { return Err("Error: Each row of the board must have 8 entries".to_string())}
     }
 
-    pieces[WHITE] = get_white_pieces(&pieces);
-    pieces[BLACK] = get_black_pieces(&pieces);
-
     Ok(pieces)
 }
 
+// -------------------- Info --------------------
 
 pub fn halfmove_to_info(halfmove: u64) -> u64 {
     halfmove << 8
@@ -226,6 +228,8 @@ pub fn info_to_enpassant(info: u64) -> u64 {
 
     if shift >= 64 { EMPTY } else { 1u64 << shift }
 }
+
+// -------------------- FEN --------------------
 
 /// Converts FEN notation into fen array
 pub fn string_to_fen(fen_str: &str) -> Result<FenArray, String> {
@@ -301,4 +305,82 @@ pub fn fen_to_string(fen: FenArray) -> String {
     let fullmove = info_to_fullmove(info).to_string();
 
     format!("{} {} {} {} {} {}", board, turn, castle, enpassant, halfmove, fullmove)
+}
+
+// -------------------- Move --------------------
+
+/// Converts from and to bitboards and promotion index to move
+pub fn create_move(from: u64, to: u64, prom: Prom) -> Move {
+    let from_move: u16 = from.trailing_zeros() as u16;
+    let to_move: u16 = (to.trailing_zeros() << 6) as u16;
+    
+    let prom_move: u16 = match prom {
+        Prom::Queen => 1u16 << 12,
+        Prom::Bishop => 1u16 << 13,
+        Prom::Knight => 1u16 << 14,
+        Prom::Rook => 1u16 << 15,
+        Prom::NoProm => 0,
+    };
+
+    from_move | to_move | prom_move
+}
+
+/// Gets from bitboard from move
+pub fn move_to_from(move1: Move) -> u64 {
+    let shift = move1 & 0b0000000000111111;
+    1u64 << shift
+}
+
+/// Gets to bitboard from move
+pub fn move_to_to(move1: Move) -> u64 {
+    let shift = (move1 & 0b0000111111000000) >> 6;
+    1u64 << shift
+}
+
+/// Gets promotion index from move
+pub fn move_to_prom(move1: Move) -> Prom {
+    let prom_move = (move1 & 0b1111000000000000) >> 12;
+
+    match prom_move {
+        0b1 => Prom::Queen,
+        0b10 => Prom::Bishop,
+        0b100 => Prom::Knight,
+        0b1000 => Prom::Rook,
+        _ => Prom::NoProm,
+    }
+}
+
+/// Converts LAN notation to move
+pub fn lan_to_move(lan: &str) -> Result<Move, String> {
+    let lower_lan = lan.to_lowercase();
+
+    if lan.len() != 4 && lan.len() != 5 { return Err("Error: Move must have four or five characters".to_string()) }
+
+    let from_square = &lower_lan[0..2];
+    let to_square = &lower_lan[2..4];
+
+    if !is_valid_lan(from_square) || !is_valid_lan(to_square) { return Err("Error: Move must have valid squares".to_string()) }
+
+    let from = lan_to_bitboard(from_square);
+    let to = lan_to_bitboard(to_square);
+
+    if lan.len() == 4 { return Ok(create_move(from, to, Prom::NoProm)) }
+
+    let allowed_proms = ["q", "b", "n", "r"];
+    let prom_str = &lower_lan[4..5];
+
+    if !allowed_proms.contains(&prom_str) { return Err("Error: Promotion flag must be 'q', 'b', 'n' or 'r'".to_string()) }
+
+    let prom = Prom::from_str(prom_str);
+
+    Ok(create_move(from, to, prom))
+}
+
+/// Converts move to LAN notation
+pub fn move_to_lan(move1: Move) -> String {
+    let from = move_to_from(move1);
+    let to = move_to_to(move1);
+    let prom = move_to_prom(move1);
+
+    bitboard_to_lan(from) + &bitboard_to_lan(to) + &prom.to_string()
 }
