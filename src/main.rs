@@ -4,21 +4,23 @@ pub mod fen;
 pub mod move_gen;
 pub mod fish;
 pub mod tests;
+pub mod games;
 
 use crate::utils::*;
 use crate::fen::Fen;
 
 const COMMAND_HELP: &str = "
-    help \t Get this info.
-    quit \t Quit the application.
-    fen \t Get access to the engine.
+    help \t\t\t Get this info.
+    quit \t\t\t Quit the application.
+    fen \t\t\t Get access to the engine.
 
     Fen:
 
-    pos default \t Get the default position
-    pos [FEN notation] \t Get the given position
-    show \t Show the current position in FEN notation
-    print \t Show the board with info
+    pos default \t\t Get the default position.
+    pos [FEN notation] \t\t Get the given position.
+    move [LAN notation] \t Apply the given move to the current position.
+    string \t\t\t Show the current position in FEN notation.
+    board \t\t\t Show the board with info.
 ";
 
 // This layered system may not be ideal, but for a different system we would only have to change this file, so its fine
@@ -74,9 +76,9 @@ fn fen() -> bool {
             }
         }
 
-        if user_input == "show" { println!("{}", fen.to_string()) }
+        if user_input == "string" { println!("{}", fen.to_string()) }
 
-        if user_input == "print" { fen.print_board() }
+        if user_input == "board" { fen.print_board() }
 
         if user_input == "return" { return true }
 
