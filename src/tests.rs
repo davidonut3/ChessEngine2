@@ -6,6 +6,7 @@ use rand::Rng;
 use crate::fen::Fen;
 use crate::games::get_games;
 use crate::utils::*;
+use crate::magics::*;
 
 pub const SINGLE_BITS: BitboardTable = [
     0b0000000000000000000000000000000000000000000000000000000000000001,
@@ -84,6 +85,8 @@ pub fn test_fen_string_conversion() {
 
         assert_eq!(game, fen_str)
     }
+
+    println!("Fens converted succesfully")
 }
 
 pub fn test_iterator_speed_1(test_count: u128) {
@@ -193,11 +196,91 @@ pub fn test_iterator_speed() {
 
     Order of tests does not matter, I checked.
 
-    Conclusion: option 2 (mask << 1) is probably best.
+    Conclusion: option 2 (mask <<= 1) is probably best.
     */
 
     test_iterator_speed_1(test_count);
     test_iterator_speed_2(test_count);
     test_iterator_speed_3(test_count);
     test_iterator_speed_4(test_count);
+}
+
+pub fn test_pext_correctness() {
+    let games = get_games();
+    let mut fens = Vec::new();
+
+    for fen_str in games {
+        fens.push(Fen::from_str(&fen_str).unwrap())
+    }
+
+    for fen in &fens {
+        let white = get_white_pieces(&fen.array);
+        let black = get_black_pieces(&fen.array);
+        let occupied = white | black;
+
+        let mut rooks = fen.array[ROOK_W];
+        while rooks != 0 {
+            let square = 1u64 << rooks.trailing_zeros();
+
+            let attacks_normal = generate_rook_moves(square, occupied, white);
+            let attacks_pext = get_rook_attack(square, occupied, white);
+
+            assert_eq!(attacks_normal, attacks_pext);
+
+            rooks ^= square
+        }
+    }
+
+    println!("Generated moves checked succesfully")
+}
+
+pub fn test_pext_vs_ray_speed() {
+    let games = get_games();
+    let mut fens = Vec::new();
+
+    for fen_str in games {
+        fens.push(Fen::from_str(&fen_str).unwrap())
+    }
+
+    let mut total = EMPTY;
+
+    let start = Instant::now();
+    for fen in &fens {
+        let white = get_white_pieces(&fen.array);
+        let black = get_black_pieces(&fen.array);
+        let occupied = white | black;
+
+        let mut rooks = fen.array[ROOK_W];
+        while rooks != 0 {
+            let square = 1u64 << rooks.trailing_zeros();
+
+            let attacks = get_rook_attack(square, occupied, white);
+
+            total = total.wrapping_add(attacks);
+
+            rooks ^= square
+        }
+    }
+
+    println!("Test pext: {}", start.elapsed().as_micros());
+
+    let start = Instant::now();
+    for fen in &fens {
+        let white = get_white_pieces(&fen.array);
+        let black = get_black_pieces(&fen.array);
+        let occupied = white | black;
+
+        let mut rooks = fen.array[ROOK_W];
+        while rooks != 0 {
+            let square = 1u64 << rooks.trailing_zeros();
+
+            let attacks = generate_rook_moves(square, occupied, white);
+
+            total = total.wrapping_add(attacks);
+
+            rooks ^= square
+        }
+    }
+
+    println!("Test rays: {}", start.elapsed().as_micros());
 }

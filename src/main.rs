@@ -7,9 +7,7 @@ pub mod tests;
 pub mod games;
 pub mod magics;
 
-use crate::magics::BISHOP_MASKS;
-use crate::magics::ROOK_MASKS;
-use crate::parsing::*;
+use crate::magics::*;
 use crate::utils::*;
 use crate::fen::Fen;
 
@@ -27,33 +25,28 @@ const COMMAND_HELP: &str = "
     board \t\t\t Show the board with info.
 ";
 
-pub fn startup_information() {
-    println!("Chess Engine Command Line Tool | Enter 'help' for help.");
+pub fn startup() {
 
+    // We check if the BMI2 instructions are available, since these are used in move generation
     if !is_x86_feature_detected!("bmi2") {
-        println!("BMI2 not detected. This means we cannot use certain instructions.");
+        println!("Warning: BMI2 not detected. This means we cannot use certain instructions.");
         println!("In particular, move generation will not work (properly?).");
     }
+
+    // We initialize the sliding attack array
+    SLIDING_ATTACKS.get_or_init(|| generate_sliding_attacks());
+
+    println!("\nChess Engine Command Line Tool | Enter 'help' for help.");
 }
 
 
 // This layered system may not be ideal, but for a different system we would only have to change this file, so its fine
 
 fn main() {
-    startup_information();
+    startup();
 
-    let mut total: usize = 0;
-    for mask in ROOK_MASKS {
-        let offset = mask.count_ones();
-        total += 2_usize.pow(offset);
-        println!("{},", total);
-    }
-
-    for mask in BISHOP_MASKS {
-        let offset = mask.count_ones();
-        total += 2_usize.pow(offset);
-        println!("{},", total);
-    }
+    tests::test_pext_correctness();
+    tests::test_pext_vs_ray_speed();
 
     main_loop();
 }

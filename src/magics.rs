@@ -1,16 +1,10 @@
 use crate::utils::*;
 
-use core::arch::x86_64::_pext_u64;
+use core::arch::x86_64::{_pdep_u64, _pext_u64};
+use std::sync::OnceLock;
 
 const ATTACK_ARRAY_SIZE: usize = 107648;
-
-const fn compute_sliding_attacks() -> [u64; ATTACK_ARRAY_SIZE] {
-    let mut result = [0; ATTACK_ARRAY_SIZE];
-
-    result
-}
-
-const SLIDING_ATTACKS: [u64; ATTACK_ARRAY_SIZE] = compute_sliding_attacks();
+pub static SLIDING_ATTACKS: OnceLock<Box<[u64; ATTACK_ARRAY_SIZE]>> = OnceLock::new();
 
 pub const ROOK_MOVES: BitboardTable = [
     0b0000000100000001000000010000000100000001000000010000000111111110,
@@ -414,6 +408,47 @@ pub const BISHOP_OFFSETS: [usize; 64] = [
     107584,
 ];
 
+/// Generates the sliding attacks array
+pub fn generate_sliding_attacks() -> Box<[u64; ATTACK_ARRAY_SIZE]> {
+    let mut result = Box::new([0; ATTACK_ARRAY_SIZE]);
+
+    let mut square = 1u64;
+    for _ in 0..64 {
+        let square_index = square.trailing_zeros() as usize;
+        let mask = ROOK_MASKS[square_index];
+        let offset = ROOK_OFFSETS[square_index];
+
+        for i in 0..2_usize.pow(mask.count_ones()) {
+            let occupied = unsafe { _pdep_u64(i as u64, mask) };
+            let attacks = generate_rook_moves(square, occupied, EMPTY);
+            let index = offset + i;
+
+            result[index] = attacks;
+        }
+
+        square <<= 1;
+    }
+
+    square = 1u64;
+    for _ in 0..64 {
+        let square_index = square.trailing_zeros() as usize;
+        let mask = BISHOP_MASKS[square_index];
+        let offset = BISHOP_OFFSETS[square_index];
+
+        for i in 0..2_usize.pow(mask.count_ones()) {
+            let occupied = unsafe { _pdep_u64(i as u64, mask) };
+            let attacks = generate_bishop_moves(square, occupied, EMPTY);
+            let index = offset + i;
+
+            result[index] = attacks;
+        }
+
+        square <<= 1;
+    }
+
+    result
+}
+
 /// Generates pseudo-legal moves for the rook
 pub fn generate_rook_moves(square: u64, occupied: u64, team: u64) -> u64 {
     let index = square.trailing_zeros() as usize;
@@ -488,6 +523,8 @@ pub fn generate_bishop_moves(square: u64, occupied: u64, team: u64) -> u64 {
 }
 
 pub fn get_rook_attack(square: u64, occupied: u64, team: u64) -> u64 {
+    let sliding_attacks = SLIDING_ATTACKS.get().unwrap();
+
     let square_index = square.trailing_zeros() as usize;
     let mask = ROOK_MASKS[square_index];
     let offset = ROOK_OFFSETS[square_index];
@@ -495,12 +532,14 @@ pub fn get_rook_attack(square: u64, occupied: u64, team: u64) -> u64 {
     let pext = unsafe { _pext_u64(occupied, mask) as usize };
 
     let index = pext + offset;
-    let attacks = SLIDING_ATTACKS[index];
+    let attacks = sliding_attacks[index];
 
     attacks & !team
 }
 
 pub fn get_bishop_attack(square: u64, occupied: u64, team: u64) -> u64 {
+    let sliding_attacks = SLIDING_ATTACKS.get().unwrap();
+
     let square_index = square.trailing_zeros() as usize;
     let mask = BISHOP_MASKS[square_index];
     let offset = BISHOP_OFFSETS[square_index];
@@ -508,7 +547,7 @@ pub fn get_bishop_attack(square: u64, occupied: u64, team: u64) -> u64 {
     let pext = unsafe { _pext_u64(occupied, mask) as usize };
 
     let index = pext + offset;
-    let attacks = SLIDING_ATTACKS[index];
+    let attacks = sliding_attacks[index];
 
     attacks & !team
 }
