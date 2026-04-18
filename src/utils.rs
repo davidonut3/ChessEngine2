@@ -26,6 +26,9 @@ pub const FILE_F: u64 = FILE << 2;
 pub const FILE_G: u64 = FILE << 1;
 pub const FILE_H: u64 = FILE;
 
+pub const RANKS: [u64; 8] = [ RANK_1, RANK_2, RANK_3, RANK_4, RANK_5, RANK_6, RANK_7, RANK_8 ];
+pub const FILES: [u64; 8] = [ FILE_A, FILE_B, FILE_C, FILE_D, FILE_E, FILE_F, FILE_G, FILE_H ];
+
 // -------------------- Fen Array --------------------
 
 pub const PAWN_W: usize = 0;
@@ -178,4 +181,14 @@ pub fn get_user_input() -> String {
         .expect("Failed to read line");
 
     user_input.trim().to_string()
+}
+
+pub fn get_rank(bitboard: u64) -> u64 {
+    let index = bitboard.trailing_zeros() as usize / 8;
+    RANKS[index]
+}
+
+pub fn get_file(bitboard: u64) -> u64 {
+    let index = 7 - bitboard.trailing_zeros() as usize % 8;
+    FILES[index]
 }

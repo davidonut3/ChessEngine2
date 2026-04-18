@@ -81,9 +81,9 @@ pub fn rank_to_lan(rank: usize) -> String {
 
 /// Converts bitboard to LAN notation
 pub fn bitboard_to_lan(bitboard: u64) -> String {
-    let pos = bitboard.trailing_zeros() as usize;
-    let file = pos % 8;
-    let rank = pos / 8;
+    let index = bitboard.trailing_zeros() as usize;
+    let file = index % 8;
+    let rank = index / 8;
 
     file_to_lan(file) + &rank_to_lan(rank)
 }
@@ -135,12 +135,12 @@ pub fn board_to_fen_notation(array: FenArray) -> String {
         let mut empty = 0;
 
         for file in 0..8 {
-            let pos = FIRST >> (rank * 8 + file);
+            let square = FIRST >> (rank * 8 + file);
 
             // We find the index for which the array is not empty at pos, then map this to its char
             let mut piece_char: Option<char> = None;
             for i in 0..PIECE_TYPES {
-                if array[i] & pos != 0 {
+                if array[i] & square != 0 {
                     piece_char = Some(piece_to_char(i));
                 }
             }
@@ -383,4 +383,26 @@ pub fn move_to_lan(move1: Move) -> String {
     let prom = move_to_prom(move1);
 
     bitboard_to_lan(from) + &bitboard_to_lan(to) + &prom.to_string()
+}
+
+// -------------------- Print --------------------
+
+/// Prints the given integer as a binary number
+pub fn print_u64(value: u64) {
+    print!("0b");
+    for i in 0..64 {
+        let bit_set = if value & (FIRST >> i) == 0 { 0 } else { 1 };
+        print!("{}", bit_set)
+    }
+    println!(",")
+}
+
+/// Prints the given bitboard as a 8x8 square
+pub fn print_bitboard(bitboard: u64) {
+    for i in 0..64 {
+        let bit_set = if bitboard & (FIRST >> i) == 0 { 0 } else { 1 };
+        print!("{}", bit_set);
+
+        if i % 8 == 7 { println!() }
+    }
 }

@@ -1,6 +1,19 @@
 I want to test if having a move array of 128 or 256 entries is faster than 218.
-I want to test if having a compact move (16 bit, 6-6-2 layout) is significantly slower than just u64-u64-u64. I would guess not since it is just leading_zeros() etc.
+I want to test if having a compact move (16 bit, 6-6-2 layout) is significantly slower than just u64-u64-u64. I would guess not since it is just trailing_zeros() etc.
 I would prefer 128 with compact moves since this would take up only 256 bytes per array, instead of 5232 bytes in case of 218 with u64*3.
 To test this we might need to set up fen first.
 
 WE NEED TO TEST IF DO_MOVE WORKS CORRECTLY, BUT I THINK WE NEED TO BE ABLE TO GENERATE LEGAL MOVES FIRST
+
+
+
+
+Other tests:
+
+https://matklad.github.io/2021/07/09/inline-in-rust.html
+See if #[inline(always)] or #[inline] speeds things up
+
+Check if _pext_u64 really is faster than magic bitboards
+Could increase slider attack lookup speed by having each part of array same size, makes indexing faster
+
+https://analog-hors.github.io/site/magic-bitboards/

@@ -5,7 +5,11 @@ pub mod move_gen;
 pub mod fish;
 pub mod tests;
 pub mod games;
+pub mod magics;
 
+use crate::magics::BISHOP_MASKS;
+use crate::magics::ROOK_MASKS;
+use crate::parsing::*;
 use crate::utils::*;
 use crate::fen::Fen;
 
@@ -23,11 +27,38 @@ const COMMAND_HELP: &str = "
     board \t\t\t Show the board with info.
 ";
 
+pub fn startup_information() {
+    println!("Chess Engine Command Line Tool | Enter 'help' for help.");
+
+    if !is_x86_feature_detected!("bmi2") {
+        println!("BMI2 not detected. This means we cannot use certain instructions.");
+        println!("In particular, move generation will not work (properly?).");
+    }
+}
+
+
 // This layered system may not be ideal, but for a different system we would only have to change this file, so its fine
 
 fn main() {
-    println!("Chess Engine Command Line Tool | Enter 'help' for help.");
+    startup_information();
 
+    let mut total: usize = 0;
+    for mask in ROOK_MASKS {
+        let offset = mask.count_ones();
+        total += 2_usize.pow(offset);
+        println!("{},", total);
+    }
+
+    for mask in BISHOP_MASKS {
+        let offset = mask.count_ones();
+        total += 2_usize.pow(offset);
+        println!("{},", total);
+    }
+
+    main_loop();
+}
+
+fn main_loop() {
     loop {
         let user_input = get_user_input().to_lowercase();
 
