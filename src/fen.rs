@@ -1,5 +1,6 @@
 use crate::utils::*;
 use crate::parsing;
+use crate::movegen::*;
 
 #[derive(Debug, Clone)]
 pub struct Fen {
@@ -53,11 +54,23 @@ impl Fen {
         )
     }
 
+    pub fn white_to_move(&self) -> bool {
+        self.array[INFO] & TURN_FLAG != 0
+    }
+    
     pub fn make_move(&mut self, move1: Move) {
         if self.white_to_move() { 
             self.make_move_white(move1);
         } else {
             self.make_move_black(move1);
+        }
+    }
+
+    pub fn in_check(&self) -> bool {
+        if self.white_to_move() { 
+            self.in_check_white()
+        } else {
+            self.in_check_black()
         }
     }
 
@@ -245,7 +258,49 @@ impl Fen {
 
     }
 
-    pub fn white_to_move(&self) -> bool {
-        self.array[INFO] & TURN_FLAG != 0
+    fn in_check_white(&self) -> bool {
+        
+        // We let the king make the moves of each piece, to see if there is a piece that is attacking the king.
+        // This is more efficient than calculating all the moves, since there is only one king.
+        // We do not have to care for the opponent king, enpassant and pseudo-legal moves that are not legal.
+        
+        let king = self.array[KING_W];
+
+        // We check knights and pawns first, since they are simple lookups and do not need occupancy.
+        if get_knight_moves(king) & self.array[KNIGHT_B] != 0 { return true }
+
+        // We use white pawn attacks, since this is the inverse of black pawn attacks.
+        if get_white_pawn_attacks(king) & self.array[PAWN_B] != 0 { return true }
+
+        let occupied = get_occupancy(&self.array);
+
+        if get_queen_moves(king, occupied) & self.array[QUEEN_B] != 0 { return true }
+        if get_rook_moves(king, occupied) & self.array[ROOK_B] != 0 { return true }
+        if get_bishop_moves(king, occupied) & self.array[BISHOP_B] != 0 { return true }
+
+        false
+    }
+
+    fn in_check_black(&self) -> bool {
+
+        // We let the king make the moves of each piece, to see if there is a piece that is attacking the king.
+        // This is more efficient than calculating all the moves, since there is only one king.
+        // We do not have to care for the opponent king, enpassant and pseudo-legal moves that are not legal.
+        
+        let king = self.array[KING_B];
+
+        // We check knights and pawns first, since they are simple lookups and do not need occupancy.
+        if get_knight_moves(king) & self.array[KNIGHT_W] != 0 { return true }
+
+        // We use black pawn attacks, since this is the inverse of black pawn attacks.
+        if get_black_pawn_attacks(king) & self.array[PAWN_W] != 0 { return true }
+
+        let occupied = get_occupancy(&self.array);
+
+        if get_queen_moves(king, occupied) & self.array[QUEEN_W] != 0 { return true }
+        if get_rook_moves(king, occupied) & self.array[ROOK_W] != 0 { return true }
+        if get_bishop_moves(king, occupied) & self.array[BISHOP_W] != 0 { return true }
+
+        false
     }
 }

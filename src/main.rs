@@ -1,13 +1,13 @@
 pub mod utils;
 pub mod parsing;
 pub mod fen;
-pub mod move_gen;
+pub mod movegen;
 pub mod fish;
 pub mod tests;
 pub mod games;
-pub mod magics;
 
-use crate::magics::*;
+use crate::movegen::*;
+use crate::tests::*;
 use crate::utils::*;
 use crate::fen::Fen;
 
@@ -28,13 +28,12 @@ const COMMAND_HELP: &str = "
 pub fn startup() {
 
     // We check if the BMI2 instructions are available, since these are used in move generation
-    if !is_x86_feature_detected!("bmi2") {
-        println!("Warning: BMI2 not detected. This means we cannot use certain instructions.");
-        println!("In particular, move generation will not work (properly?).");
+    if !is_x86_feature_detected!("bmi2") || !test_bmi2() {
+        println!("Warning: BMI2 not detected. This means we cannot use certain CPU instructions.");
+        println!("This means that some operations will be slower, leading to suboptimal results.");
     }
 
-    // We initialize the sliding attack array
-    SLIDING_ATTACKS.get_or_init(|| generate_sliding_attacks());
+    init_attack_table();
 
     println!("\nChess Engine Command Line Tool | Enter 'help' for help.");
 }
@@ -45,7 +44,6 @@ pub fn startup() {
 fn main() {
     startup();
 
-    tests::test_pext_correctness();
     tests::test_pext_vs_ray_speed();
 
     main_loop();

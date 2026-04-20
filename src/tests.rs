@@ -6,7 +6,7 @@ use rand::Rng;
 use crate::fen::Fen;
 use crate::games::get_games;
 use crate::utils::*;
-use crate::magics::*;
+use crate::movegen::*;
 
 pub const SINGLE_BITS: BitboardTable = [
     0b0000000000000000000000000000000000000000000000000000000000000001,
@@ -74,6 +74,18 @@ pub const SINGLE_BITS: BitboardTable = [
     0b0100000000000000000000000000000000000000000000000000000000000000,
     0b1000000000000000000000000000000000000000000000000000000000000000,
 ];
+
+/// The test_bmi2 functions test if a function flagged with #[cfg(target_feature = "bmi2")] will work or not
+#[cfg(target_feature = "bmi2")]
+pub fn test_bmi2() -> bool {
+    true
+}
+
+/// The test_bmi2 functions test if a function flagged with #[cfg(target_feature = "bmi2")] will work or not
+#[cfg(not(target_feature = "bmi2"))]
+pub fn test_bmi2() -> bool {
+    false
+}
 
 /// Test if fen from string and fen to string are inverses
 pub fn test_fen_string_conversion() {
@@ -222,10 +234,20 @@ pub fn test_pext_correctness() {
         while rooks != 0 {
             let square = 1u64 << rooks.trailing_zeros();
 
-            let attacks_normal = generate_rook_moves(square, occupied, white);
-            let attacks_pext = get_rook_attack(square, occupied, white);
+            let attacks_ray = get_ray_rook_moves(square, occupied) & !white;
+            let attacks_pext = get_pext_rook_moves(square, occupied) & !white;
 
-            assert_eq!(attacks_normal, attacks_pext);
+            if attacks_ray != attacks_pext {
+                println!("{}", fen.to_string());
+                fen.print_board();
+                crate::parsing::print_bitboard(square);
+                println!();
+                crate::parsing::print_bitboard(attacks_ray);
+                println!();
+                crate::parsing::print_bitboard(attacks_pext);
+                println!();
+                panic!();
+            }
 
             rooks ^= square
         }
@@ -234,12 +256,14 @@ pub fn test_pext_correctness() {
     println!("Generated moves checked succesfully")
 }
 
-pub fn test_pext_vs_ray_speed() {
+pub fn test_pext_speed() {
     let games = get_games();
     let mut fens = Vec::new();
 
     for fen_str in games {
-        fens.push(Fen::from_str(&fen_str).unwrap())
+        for _ in 0..100 {
+            fens.push(Fen::from_str(&fen_str).unwrap())
+        }
     }
 
     let mut total = EMPTY;
@@ -254,7 +278,7 @@ pub fn test_pext_vs_ray_speed() {
         while rooks != 0 {
             let square = 1u64 << rooks.trailing_zeros();
 
-            let attacks = get_rook_attack(square, occupied, white);
+            let attacks = get_pext_rook_moves(square, occupied) & !white;
 
             total = total.wrapping_add(attacks);
 
@@ -262,7 +286,20 @@ pub fn test_pext_vs_ray_speed() {
         }
     }
 
-    println!("Test pext: {}", start.elapsed().as_micros());
+    println!("Test pext: {}", start.elapsed().as_nanos());
+}
+
+pub fn test_ray_speed() {
+    let games = get_games();
+    let mut fens = Vec::new();
+
+    for fen_str in games {
+        for _ in 0..100 {
+            fens.push(Fen::from_str(&fen_str).unwrap())
+        }
+    }
+
+    let mut total = EMPTY;
 
     let start = Instant::now();
     for fen in &fens {
@@ -274,7 +311,7 @@ pub fn test_pext_vs_ray_speed() {
         while rooks != 0 {
             let square = 1u64 << rooks.trailing_zeros();
 
-            let attacks = generate_rook_moves(square, occupied, white);
+            let attacks = get_ray_rook_moves(square, occupied) & !white;
 
             total = total.wrapping_add(attacks);
 
@@ -282,5 +319,48 @@ pub fn test_pext_vs_ray_speed() {
         }
     }
 
-    println!("Test rays: {}", start.elapsed().as_micros());
+    println!("Test rays: {}", start.elapsed().as_nanos());
+}
+
+pub fn test_gen_speed() {
+    let games = get_games();
+    let mut fens = Vec::new();
+
+    for fen_str in games {
+        for _ in 0..100 {
+            fens.push(Fen::from_str(&fen_str).unwrap())
+        }
+    }
+
+    let mut total = EMPTY;
+
+    let start = Instant::now();
+    for fen in &fens {
+        let white = get_white_pieces(&fen.array);
+        let black = get_black_pieces(&fen.array);
+        let occupied = white | black;
+
+        let mut rooks = fen.array[ROOK_W];
+        while rooks != 0 {
+            let square = 1u64 << rooks.trailing_zeros();
+
+            let attacks = get_rook_moves(square, occupied) & !white;
+
+            total = total.wrapping_add(attacks);
+
+            rooks ^= square
+        }
+    }
+
+    println!("Test general: {}", start.elapsed().as_nanos());
+}
+
+pub fn test_pext_vs_ray_speed() {
+    
+    // We test ray twice since there seems to be a latency in the first test
+    test_ray_speed();
+    
+    test_gen_speed();
+    test_ray_speed();
+    test_pext_speed();
 }

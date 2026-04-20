@@ -4,6 +4,8 @@ use std::io;
 
 pub const EMPTY: u64 = 0b0;
 pub const FIRST: u64 = 0b1000000000000000000000000000000000000000000000000000000000000000;
+pub const EDGES: u64 = 0b1111111110000001100000011000000110000001100000011000000111111111;
+pub const MIDDLE: u64 = 0b0000000001111110011111100111111001111110011111100111111000000000;
 
 pub const RANK: u64 = 0b0000000000000000000000000000000000000000000000000000000011111111;
 pub const FILE: u64 = 0b0000000100000001000000010000000100000001000000010000000100000001;
@@ -165,12 +167,19 @@ pub const DEFAULT_FEN_ARRAY: [u64; FEN_ARRAY_SIZE] = [
 
 // ==================== Helper Functions ====================
 
+#[inline(always)]
 pub fn get_white_pieces(pieces: &FenArray) -> u64 {
     pieces[PAWN_W] | pieces[KING_W] | pieces[QUEEN_W] | pieces[BISHOP_W] | pieces[KNIGHT_W] | pieces[ROOK_W]
 }
 
+#[inline(always)]
 pub fn get_black_pieces(pieces: &FenArray) -> u64 {
     pieces[PAWN_B] | pieces[KING_B] | pieces[QUEEN_B] | pieces[BISHOP_B] | pieces[KNIGHT_B] | pieces[ROOK_B]
+}
+
+#[inline(always)]
+pub fn get_occupancy(pieces: &FenArray) -> u64 {
+    get_white_pieces(pieces) | get_black_pieces(pieces)
 }
 
 pub fn get_user_input() -> String {
@@ -183,12 +192,15 @@ pub fn get_user_input() -> String {
     user_input.trim().to_string()
 }
 
+#[inline(always)]
 pub fn get_rank(bitboard: u64) -> u64 {
     let index = bitboard.trailing_zeros() as usize / 8;
     RANKS[index]
 }
 
+#[inline(always)]
 pub fn get_file(bitboard: u64) -> u64 {
     let index = 7 - bitboard.trailing_zeros() as usize % 8;
     FILES[index]
 }
+

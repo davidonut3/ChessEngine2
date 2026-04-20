@@ -14,6 +14,11 @@ https://matklad.github.io/2021/07/09/inline-in-rust.html
 See if #[inline(always)] or #[inline] speeds things up
 
 Check if _pext_u64 really is faster than magic bitboards
-Could increase slider attack lookup speed by having each part of array same size, makes indexing faster
+Could increase slider attack lookup speed by having each part of array same size, makes indexing faster (maybe)
 
 https://analog-hors.github.io/site/magic-bitboards/
+
+https://peterellisjones.com/posts/generating-legal-chess-moves-efficiently/
+
+https://www.fide.com/FIDE/handbook/LawsOfChess.pdf
+
