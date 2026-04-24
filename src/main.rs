@@ -23,6 +23,7 @@ const COMMAND_HELP: &str = "
     move [LAN notation] \t Apply the given move to the current position.
     string \t\t\t Show the current position in FEN notation.
     board \t\t\t Show the board with info.
+    moves \t\t\t Get the legal moves in the current position.
 ";
 
 pub fn startup() {
@@ -43,8 +44,6 @@ pub fn startup() {
 
 fn main() {
     startup();
-
-    tests::test_pext_vs_ray_speed();
 
     main_loop();
 }
@@ -88,7 +87,7 @@ fn fen() -> bool {
             continue
         }
 
-        if user_input.find("move") == Some(0) {
+        if user_input.find("move ") == Some(0) {
             let lan = user_input.split_at(5).1;
             let result = parsing::lan_to_move(lan);
 
@@ -96,6 +95,13 @@ fn fen() -> bool {
                 Ok(move1) => { fen.make_move(move1); fen.print_board(); },
                 Err(error) => println!("{}", error)
             }
+        }
+
+        if user_input == "moves" { 
+
+            let moves = fen.get_pseudo_legal_moves();
+            println!("{}", moves.to_string())
+
         }
 
         if user_input == "string" { println!("{}", fen.to_string()) }

@@ -1,3 +1,4 @@
+use crate::parsing::info_to_enpassant;
 use crate::utils::*;
 use crate::parsing;
 use crate::movegen::*;
@@ -49,7 +50,7 @@ impl Fen {
         }
 
         println!(
-            "Board: {}\n\t8 {}\n\t7 {}\n\t6 {}\n\t5 {}\n\t4 {}\n\t3 {}\n\t2 {}\n\t1 {}\n\t  a b c d e f g h",
+            "Board: {}\n\n\t8 | {}\n\t7 | {}\n\t6 | {}\n\t5 | {}\n\t4 | {}\n\t3 | {}\n\t2 | {}\n\t1 | {}\n\t  + ---------------\n\t    a b c d e f g h",
             info, rows[0], rows[1], rows[2], rows[3], rows[4], rows[5], rows[6], rows[7]
         )
     }
@@ -74,6 +75,14 @@ impl Fen {
         }
     }
 
+    pub fn get_pseudo_legal_moves(&self) -> Moves {
+        if self.white_to_move() {
+            self.get_pseudo_legal_moves_white()
+        } else {
+            self.get_pseudo_legal_moves_black()
+        }
+    }
+
     fn make_move_white(&mut self, move1: Move) {
 
         // We assume that white is to move, and that the move and the position are legal
@@ -92,7 +101,7 @@ impl Fen {
         let black_kingside = info & BLACK_KINGSIDE_RIGHTS != 0;
         let black_queenside = info & BLACK_QUEENSIDE_RIGHTS != 0;
 
-        let all_pieces = get_white_pieces(&self.array) | get_black_pieces(&self.array);
+        let all_pieces = get_occupancy(&self.array);
 
         let from = parsing::move_to_from(move1);
         let to = parsing::move_to_to(move1);
@@ -184,7 +193,7 @@ impl Fen {
         let black_kingside = info & BLACK_KINGSIDE_RIGHTS != 0;
         let black_queenside = info & BLACK_QUEENSIDE_RIGHTS != 0;
 
-        let all_pieces = get_white_pieces(&self.array) | get_black_pieces(&self.array);
+        let all_pieces = get_occupancy(&self.array);
 
         let from = parsing::move_to_from(move1);
         let to = parsing::move_to_to(move1);
@@ -303,4 +312,324 @@ impl Fen {
 
         false
     }
+
+    fn get_pseudo_legal_moves_white(&self) -> Moves {
+
+        // For castling, we do not check if the squares between king and rook are attacked
+
+        let mut array: MoveArray = [0; MAX_MOVES];
+        let mut size: usize = 0;
+
+        let king = self.array[KING_W];
+        let info = self.array[INFO];
+
+        let opponents = get_black_pieces(&self.array);
+        let team = get_white_pieces(&self.array);
+        let occupied = opponents | team;
+
+        let mut king_moves = get_king_moves(king) & !team;
+        while king_moves != 0 {
+            let index = king_moves.trailing_zeros() as usize;
+            let to = 1u64 << index;
+            let move1 = parsing::create_move_no_prom(king, to);
+
+            array[size] = move1;
+            size += 1;
+
+            king_moves ^= to;
+        }
+
+        let kingside = info & WHITE_KINGSIDE_RIGHTS != 0;
+        let queenside = info & WHITE_QUEENSIDE_RIGHTS != 0;
+        let kingside_free = occupied & WHITE_KINGSIDE_SQUARES == 0;
+        let queenside_free = occupied & WHITE_QUEENSIDE_SQUARES == 0;
+
+        if kingside && kingside_free {
+            let move1 = parsing::create_move_no_prom(king, WHITE_KINGSIDE_MOVE_TO);
+            array[size] = move1;
+            size += 1;
+        }
+
+        if queenside && queenside_free {
+            let move1 = parsing::create_move_no_prom(king, WHITE_QUEENSIDE_MOVE_TO);
+            array[size] = move1;
+            size += 1;
+        }
+
+        let mut pawns = self.array[PAWN_W];
+        while pawns != 0 {
+            let pawn_index = pawns.trailing_zeros() as usize;
+            let pawn = 1u64 << pawn_index;
+
+            let pawn_attacks = get_white_pawn_attacks(pawn) & (opponents | info_to_enpassant(info));
+            let pawn_steps = get_white_pawn_steps(pawn, occupied);
+            let mut pawn_moves = pawn_attacks | pawn_steps;
+
+            let promotes = pawn & RANK_7 != 0;
+
+            while pawn_moves != 0 {
+                let index = pawn_moves.trailing_zeros() as usize;
+                let to = 1u64 << index;
+
+                if promotes {
+                    array[size] = parsing::create_move(pawn, to, Prom::Queen);
+                    size += 1;
+                    array[size] = parsing::create_move(pawn, to, Prom::Bishop);
+                    size += 1;
+                    array[size] = parsing::create_move(pawn, to, Prom::Knight);
+                    size += 1;
+                    array[size] = parsing::create_move(pawn, to, Prom::Rook);
+                    size += 1;
+
+                } else {
+                    array[size] = parsing::create_move_no_prom(pawn, to);
+                    size += 1;
+
+                }
+
+                pawn_moves ^= to;
+            }
+
+            pawns ^= pawn;
+        }
+
+        let mut knights = self.array[KNIGHT_W];
+        while knights != 0 {
+            let piece_index = knights.trailing_zeros() as usize;
+            let piece = 1u64 << piece_index;
+
+            let mut moves = get_knight_moves(piece) & !team;
+            while moves != 0 {
+                let index = moves.trailing_zeros() as usize;
+                let to = 1u64 << index;
+
+                array[size] = parsing::create_move_no_prom(piece, to);
+                size += 1;
+
+                moves ^= to;
+            }
+
+            knights ^= piece;
+        }
+
+        let mut bishops = self.array[BISHOP_W];
+        while bishops != 0 {
+            let piece_index = bishops.trailing_zeros() as usize;
+            let piece = 1u64 << piece_index;
+
+            let mut moves = get_bishop_moves(piece, occupied) & !team;
+            while moves != 0 {
+                let index = moves.trailing_zeros() as usize;
+                let to = 1u64 << index;
+
+                array[size] = parsing::create_move_no_prom(piece, to);
+                size += 1;
+
+                moves ^= to;
+            }
+
+            bishops ^= piece;
+        }
+
+        let mut rooks = self.array[ROOK_W];
+        while rooks != 0 {
+            let piece_index = rooks.trailing_zeros() as usize;
+            let piece = 1u64 << piece_index;
+
+            let mut moves = get_rook_moves(piece, occupied) & !team;
+            while moves != 0 {
+                let index = moves.trailing_zeros() as usize;
+                let to = 1u64 << index;
+
+                array[size] = parsing::create_move_no_prom(piece, to);
+                size += 1;
+
+                moves ^= to;
+            }
+
+            rooks ^= piece;
+        }
+
+        let mut queens = self.array[QUEEN_W];
+        while queens != 0 {
+            let piece_index = queens.trailing_zeros() as usize;
+            let piece = 1u64 << piece_index;
+
+            let mut moves = get_queen_moves(piece, occupied) & !team;
+            while moves != 0 {
+                let index = moves.trailing_zeros() as usize;
+                let to = 1u64 << index;
+
+                array[size] = parsing::create_move_no_prom(piece, to);
+                size += 1;
+
+                moves ^= to;
+            }
+
+            queens ^= piece;
+        }
+
+        Moves::new(array, size)
+    }
+
+    fn get_pseudo_legal_moves_black(&self) -> Moves {
+
+        // For castling, we do not check if the squares between king and rook are attacked
+
+        let mut array: MoveArray = [0; MAX_MOVES];
+        let mut size: usize = 0;
+
+        let king = self.array[KING_B];
+        let info = self.array[INFO];
+
+        let opponents = get_white_pieces(&self.array);
+        let team = get_black_pieces(&self.array);
+        let occupied = opponents | team;
+
+        let mut king_moves = get_king_moves(king) & !team;
+        while king_moves != 0 {
+            let index = king_moves.trailing_zeros() as usize;
+            let to = 1u64 << index;
+            let move1 = parsing::create_move_no_prom(king, to);
+
+            array[size] = move1;
+            size += 1;
+
+            king_moves ^= to;
+        }
+
+        let kingside = info & BLACK_KINGSIDE_RIGHTS != 0;
+        let queenside = info & BLACK_QUEENSIDE_RIGHTS != 0;
+        let kingside_free = occupied & BLACK_KINGSIDE_SQUARES == 0;
+        let queenside_free = occupied & BLACK_QUEENSIDE_SQUARES == 0;
+
+        if kingside && kingside_free {
+            let move1 = parsing::create_move_no_prom(king, BLACK_KINGSIDE_MOVE_TO);
+            array[size] = move1;
+            size += 1;
+        }
+
+        if queenside && queenside_free {
+            let move1 = parsing::create_move_no_prom(king, BLACK_QUEENSIDE_MOVE_TO);
+            array[size] = move1;
+            size += 1;
+        }
+
+        let mut pawns = self.array[PAWN_B];
+        while pawns != 0 {
+            let pawn_index = pawns.trailing_zeros() as usize;
+            let pawn = 1u64 << pawn_index;
+
+            let pawn_attacks = get_black_pawn_attacks(pawn)  & (opponents | info_to_enpassant(info));
+            let pawn_steps = get_black_pawn_steps(pawn, occupied);
+            let mut pawn_moves = pawn_attacks | pawn_steps;
+
+            let promotes = pawn & RANK_2 != 0;
+
+            while pawn_moves != 0 {
+                let index = pawn_moves.trailing_zeros() as usize;
+                let to = 1u64 << index;
+
+                if promotes {
+                    array[size] = parsing::create_move(pawn, to, Prom::Queen);
+                    size += 1;
+                    array[size] = parsing::create_move(pawn, to, Prom::Bishop);
+                    size += 1;
+                    array[size] = parsing::create_move(pawn, to, Prom::Knight);
+                    size += 1;
+                    array[size] = parsing::create_move(pawn, to, Prom::Rook);
+                    size += 1;
+
+                } else {
+                    array[size] = parsing::create_move_no_prom(pawn, to);
+                    size += 1;
+
+                }
+
+                pawn_moves ^= to;
+            }
+
+            pawns ^= pawn;
+        }
+
+        let mut knights = self.array[KNIGHT_B];
+        while knights != 0 {
+            let piece_index = knights.trailing_zeros() as usize;
+            let piece = 1u64 << piece_index;
+
+            let mut moves = get_knight_moves(piece) & !team;
+            while moves != 0 {
+                let index = moves.trailing_zeros() as usize;
+                let to = 1u64 << index;
+
+                array[size] = parsing::create_move_no_prom(piece, to);
+                size += 1;
+
+                moves ^= to;
+            }
+
+            knights ^= piece;
+        }
+
+        let mut bishops = self.array[BISHOP_B];
+        while bishops != 0 {
+            let piece_index = bishops.trailing_zeros() as usize;
+            let piece = 1u64 << piece_index;
+
+            let mut moves = get_bishop_moves(piece, occupied) & !team;
+            while moves != 0 {
+                let index = moves.trailing_zeros() as usize;
+                let to = 1u64 << index;
+
+                array[size] = parsing::create_move_no_prom(piece, to);
+                size += 1;
+
+                moves ^= to;
+            }
+
+            bishops ^= piece;
+        }
+
+        let mut rooks = self.array[ROOK_B];
+        while rooks != 0 {
+            let piece_index = rooks.trailing_zeros() as usize;
+            let piece = 1u64 << piece_index;
+
+            let mut moves = get_rook_moves(piece, occupied) & !team;
+            while moves != 0 {
+                let index = moves.trailing_zeros() as usize;
+                let to = 1u64 << index;
+
+                array[size] = parsing::create_move_no_prom(piece, to);
+                size += 1;
+
+                moves ^= to;
+            }
+
+            rooks ^= piece;
+        }
+
+        let mut queens = self.array[QUEEN_B];
+        while queens != 0 {
+            let piece_index = queens.trailing_zeros() as usize;
+            let piece = 1u64 << piece_index;
+
+            let mut moves = get_queen_moves(piece, occupied) & !team;
+            while moves != 0 {
+                let index = moves.trailing_zeros() as usize;
+                let to = 1u64 << index;
+
+                array[size] = parsing::create_move_no_prom(piece, to);
+                size += 1;
+
+                moves ^= to;
+            }
+
+            queens ^= piece;
+        }
+
+        Moves::new(array, size)
+    }
+
+
 }

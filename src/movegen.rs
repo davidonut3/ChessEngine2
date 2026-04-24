@@ -704,9 +704,31 @@ pub fn get_black_pawn_attacks(square: u64) -> u64 {
 }
 
 #[inline(always)]
+pub fn get_white_pawn_steps(square: u64, occupied: u64) -> u64 {
+    let one_step = square << 8 & !occupied;
+    let two_step = ((one_step & RANK_3) << 8) & !occupied;
+
+    one_step | two_step
+}
+
+#[inline(always)]
+pub fn get_black_pawn_steps(square: u64, occupied: u64) -> u64 {
+    let one_step = square >> 8 & !occupied;
+    let two_step = ((one_step & RANK_6) >> 8) & !occupied;
+
+    one_step | two_step
+}
+
+#[inline(always)]
 pub fn get_knight_moves(square: u64) -> u64 {
     let index = square.trailing_zeros() as usize;
     KNIGHT_MOVES[index]
+}
+
+#[inline(always)]
+pub fn get_king_moves(square: u64) -> u64 {
+    let index = square.trailing_zeros() as usize;
+    KING_MOVES[index]
 }
 
 #[inline(always)]
@@ -782,7 +804,8 @@ pub fn init_attack_table() {
 }
 
 pub fn get_ray_rook_moves(square: u64, occupied: u64) -> u64 {
-    let blockers = (occupied ^ square) & MIDDLE;
+    let index = square.trailing_zeros() as usize;
+    let blockers = occupied & ROOK_MASKS[index];
 
     let rank = get_rank(square);
     let file = get_file(square);
@@ -818,7 +841,8 @@ pub fn get_ray_rook_moves(square: u64, occupied: u64) -> u64 {
 }
 
 pub fn get_ray_bishop_moves(square: u64, occupied: u64) -> u64 {
-    let blockers = (occupied ^ square) & MIDDLE;
+    let index = square.trailing_zeros() as usize;
+    let blockers = occupied & BISHOP_MASKS[index];
 
     let mut result = EMPTY;
     let mut move_to: u64;
@@ -851,7 +875,8 @@ pub fn get_ray_bishop_moves(square: u64, occupied: u64) -> u64 {
 }
 
 pub fn get_ray_queen_moves(square: u64, occupied: u64) -> u64 {
-    let blockers = (occupied ^ square) & MIDDLE;
+    let index = square.trailing_zeros() as usize;
+    let blockers = occupied & (ROOK_MASKS[index] | BISHOP_MASKS[index]);
 
     let rank = get_rank(square);
     let file = get_file(square);

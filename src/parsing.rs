@@ -325,6 +325,14 @@ pub fn create_move(from: u64, to: u64, prom: Prom) -> Move {
     from_move | to_move | prom_move
 }
 
+/// Converts from and to bitboards to move, promotion is ignored
+pub fn create_move_no_prom(from: u64, to: u64) -> Move {
+    let from_move: u16 = from.trailing_zeros() as u16;
+    let to_move: u16 = (to.trailing_zeros() << 6) as u16;
+
+    from_move | to_move
+}
+
 /// Gets from bitboard from move
 pub fn move_to_from(move1: Move) -> u64 {
     let shift = move1 & 0b0000000000111111;

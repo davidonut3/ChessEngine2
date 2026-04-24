@@ -1,11 +1,13 @@
 use std::io;
 
+use crate::parsing;
+
 // -------------------- Bitboard --------------------
 
-pub const EMPTY: u64 = 0b0;
-pub const FIRST: u64 = 0b1000000000000000000000000000000000000000000000000000000000000000;
-pub const EDGES: u64 = 0b1111111110000001100000011000000110000001100000011000000111111111;
-pub const MIDDLE: u64 = 0b0000000001111110011111100111111001111110011111100111111000000000;
+pub const EMPTY: u64    = 0b0;
+pub const FIRST: u64    = 0b1000000000000000000000000000000000000000000000000000000000000000;
+pub const EDGES: u64    = 0b1111111110000001100000011000000110000001100000011000000111111111;
+pub const MIDDLE: u64   = 0b0000000001111110011111100111111001111110011111100111111000000000;
 
 pub const RANK: u64 = 0b0000000000000000000000000000000000000000000000000000000011111111;
 pub const FILE: u64 = 0b0000000100000001000000010000000100000001000000010000000100000001;
@@ -61,14 +63,30 @@ pub const ROOK: usize = 5;
 
 // -------------------- Moves --------------------
 
-/// Do we change this to 128 or 256?
-pub const MAX_MOVES: usize = 218;
+pub const MAX_MOVES: usize = 128;
 
-// Which do we use?
 pub type Move = u16;
-pub type LargeMove = [u64; 3];
-
 pub type MoveArray = [Move; MAX_MOVES];
+
+pub struct Moves { pub array: MoveArray, pub size: usize }
+
+impl Moves {
+    pub fn new(array: MoveArray, size: usize) -> Self {
+        Self { array, size }
+    }
+
+    pub fn to_string(&self) -> String {
+        let mut result = "".to_string();
+
+        for i in 0..self.size {
+            let move1 = self.array[i];
+            result += &parsing::move_to_lan(move1);
+            result += ", ";
+        }
+
+        result
+    }
+}
 
 // -------------------- Tables --------------------
 

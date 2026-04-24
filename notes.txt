@@ -8,10 +8,17 @@ WE NEED TO TEST IF DO_MOVE WORKS CORRECTLY, BUT I THINK WE NEED TO BE ABLE TO GE
 
 
 
-Other tests:
+Other things:
 
 https://matklad.github.io/2021/07/09/inline-in-rust.html
 See if #[inline(always)] or #[inline] speeds things up
+
+Branchless programming
+
+
+Movegen:
+
+SWITCH get_moves FUNCTIONS TO index: usize INSTEAD OF square: u64 !!!
 
 Check if _pext_u64 really is faster than magic bitboards
 Could increase slider attack lookup speed by having each part of array same size, makes indexing faster (maybe)
@@ -22,3 +29,9 @@ https://peterellisjones.com/posts/generating-legal-chess-moves-efficiently/
 
 https://www.fide.com/FIDE/handbook/LawsOfChess.pdf
 
+
+
+Code quality:
+
+Learn how the compiler optimizes things, and optimize for readibility ourselfs.
+Add meaningfull comments, and add documenation on complicated parts.
