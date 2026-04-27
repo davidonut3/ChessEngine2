@@ -7,6 +7,7 @@ use crate::fen::Fen;
 use crate::games::get_games;
 use crate::utils::*;
 use crate::movegen::*;
+use crate::moves::*;
 
 pub const SINGLE_BITS: BitboardTable = [
     0b0000000000000000000000000000000000000000000000000000000000000001,
@@ -363,4 +364,36 @@ pub fn test_pext_vs_ray_speed() {
     test_gen_speed();
     test_ray_speed();
     test_pext_speed();
+}
+
+pub fn perft(depth: usize, fen: Fen) -> PerftResult {
+    let mut result = PerftResult::empty();
+    result.moves = fen.get_pseudo_legal_moves();
+
+    for i in 0..result.moves.size {
+        let mut new_fen = fen.clone();
+        let move1 = result.moves.array[i];
+        new_fen.make_move(move1);
+        let count = recursive_perft(depth, new_fen);
+        result.counts[i] = count;
+        result.total += count;
+    }
+
+    result
+}
+
+pub fn recursive_perft(depth: usize, fen: Fen) -> usize {
+    let moves = fen.get_pseudo_legal_moves();
+
+    if depth == 1 { return moves.size }
+
+    let mut total = 0;
+    for i in 0..moves.size {
+        let mut new_fen = fen.clone();
+        let move1 = moves.array[i];
+        new_fen.make_move(move1);
+        total += recursive_perft(depth - 1, new_fen);
+    }
+
+    total
 }

@@ -2,6 +2,7 @@ use crate::parsing::info_to_enpassant;
 use crate::utils::*;
 use crate::parsing;
 use crate::movegen::*;
+use crate::moves::*;
 
 #[derive(Debug, Clone)]
 pub struct Fen {
@@ -83,6 +84,14 @@ impl Fen {
         }
     }
 
+    pub fn get_moves(&self) -> Moves {
+        if self.white_to_move() {
+            self.get_moves_white()
+        } else {
+            self.get_moves_black()
+        }
+    }
+
     fn make_move_white(&mut self, move1: Move) {
 
         // We assume that white is to move, and that the move and the position are legal
@@ -103,9 +112,9 @@ impl Fen {
 
         let all_pieces = get_occupancy(&self.array);
 
-        let from = parsing::move_to_from(move1);
-        let to = parsing::move_to_to(move1);
-        let prom = parsing::move_to_prom(move1);
+        let from = move1.get_from();
+        let to = move1.get_to();
+        let prom = move1.get_prom();
 
         // We only need to increase the fullmove counter when black is to move
         // Also, since black is now to move, we leave turn flag blank in info
@@ -195,9 +204,9 @@ impl Fen {
 
         let all_pieces = get_occupancy(&self.array);
 
-        let from = parsing::move_to_from(move1);
-        let to = parsing::move_to_to(move1);
-        let prom = parsing::move_to_prom(move1);
+        let from = move1.get_from();
+        let to = move1.get_to();
+        let prom = move1.get_prom();
 
         // When black is to move, we increase the fullmove counter by one
         let new_turn = TURN_FLAG;
@@ -317,8 +326,7 @@ impl Fen {
 
         // For castling, we do not check if the squares between king and rook are attacked
 
-        let mut array: MoveArray = [0; MAX_MOVES];
-        let mut size: usize = 0;
+        let mut moves = Moves::empty();
 
         let king = self.array[KING_W];
         let info = self.array[INFO];
@@ -331,10 +339,8 @@ impl Fen {
         while king_moves != 0 {
             let index = king_moves.trailing_zeros() as usize;
             let to = 1u64 << index;
-            let move1 = parsing::create_move_no_prom(king, to);
-
-            array[size] = move1;
-            size += 1;
+            let move1 = Move::new(king, to);
+            moves.add(move1);
 
             king_moves ^= to;
         }
@@ -345,15 +351,13 @@ impl Fen {
         let queenside_free = occupied & WHITE_QUEENSIDE_SQUARES == 0;
 
         if kingside && kingside_free {
-            let move1 = parsing::create_move_no_prom(king, WHITE_KINGSIDE_MOVE_TO);
-            array[size] = move1;
-            size += 1;
+            let move1 = Move::new(king, WHITE_KINGSIDE_MOVE_TO);
+            moves.add(move1);
         }
 
         if queenside && queenside_free {
-            let move1 = parsing::create_move_no_prom(king, WHITE_QUEENSIDE_MOVE_TO);
-            array[size] = move1;
-            size += 1;
+            let move1 = Move::new(king, WHITE_QUEENSIDE_MOVE_TO);
+            moves.add(move1);
         }
 
         let mut pawns = self.array[PAWN_W];
@@ -372,19 +376,19 @@ impl Fen {
                 let to = 1u64 << index;
 
                 if promotes {
-                    array[size] = parsing::create_move(pawn, to, Prom::Queen);
-                    size += 1;
-                    array[size] = parsing::create_move(pawn, to, Prom::Bishop);
-                    size += 1;
-                    array[size] = parsing::create_move(pawn, to, Prom::Knight);
-                    size += 1;
-                    array[size] = parsing::create_move(pawn, to, Prom::Rook);
-                    size += 1;
+                    let move1 = Move::new_with_prom(pawn, to, Prom::Queen);
+                    let move2 = Move::new_with_prom(pawn, to, Prom::Bishop);
+                    let move3 = Move::new_with_prom(pawn, to, Prom::Knight);
+                    let move4 = Move::new_with_prom(pawn, to, Prom::Rook);
+
+                    moves.add(move1);
+                    moves.add(move2);
+                    moves.add(move3);
+                    moves.add(move4);
 
                 } else {
-                    array[size] = parsing::create_move_no_prom(pawn, to);
-                    size += 1;
-
+                    let move1 = Move::new(pawn, to);
+                    moves.add(move1);
                 }
 
                 pawn_moves ^= to;
@@ -398,15 +402,15 @@ impl Fen {
             let piece_index = knights.trailing_zeros() as usize;
             let piece = 1u64 << piece_index;
 
-            let mut moves = get_knight_moves(piece) & !team;
-            while moves != 0 {
-                let index = moves.trailing_zeros() as usize;
+            let mut knight_moves = get_knight_moves(piece) & !team;
+            while knight_moves != 0 {
+                let index = knight_moves.trailing_zeros() as usize;
                 let to = 1u64 << index;
 
-                array[size] = parsing::create_move_no_prom(piece, to);
-                size += 1;
+                let move1 = Move::new(piece, to);
+                moves.add(move1);
 
-                moves ^= to;
+                knight_moves ^= to;
             }
 
             knights ^= piece;
@@ -417,15 +421,15 @@ impl Fen {
             let piece_index = bishops.trailing_zeros() as usize;
             let piece = 1u64 << piece_index;
 
-            let mut moves = get_bishop_moves(piece, occupied) & !team;
-            while moves != 0 {
-                let index = moves.trailing_zeros() as usize;
+            let mut bishop_moves = get_bishop_moves(piece, occupied) & !team;
+            while bishop_moves != 0 {
+                let index = bishop_moves.trailing_zeros() as usize;
                 let to = 1u64 << index;
 
-                array[size] = parsing::create_move_no_prom(piece, to);
-                size += 1;
+                let move1 = Move::new(piece, to);
+                moves.add(move1);
 
-                moves ^= to;
+                bishop_moves ^= to;
             }
 
             bishops ^= piece;
@@ -436,15 +440,15 @@ impl Fen {
             let piece_index = rooks.trailing_zeros() as usize;
             let piece = 1u64 << piece_index;
 
-            let mut moves = get_rook_moves(piece, occupied) & !team;
-            while moves != 0 {
-                let index = moves.trailing_zeros() as usize;
+            let mut rook_moves = get_rook_moves(piece, occupied) & !team;
+            while rook_moves != 0 {
+                let index = rook_moves.trailing_zeros() as usize;
                 let to = 1u64 << index;
 
-                array[size] = parsing::create_move_no_prom(piece, to);
-                size += 1;
+                let move1 = Move::new(piece, to);
+                moves.add(move1);
 
-                moves ^= to;
+                rook_moves ^= to;
             }
 
             rooks ^= piece;
@@ -455,29 +459,28 @@ impl Fen {
             let piece_index = queens.trailing_zeros() as usize;
             let piece = 1u64 << piece_index;
 
-            let mut moves = get_queen_moves(piece, occupied) & !team;
-            while moves != 0 {
-                let index = moves.trailing_zeros() as usize;
+            let mut queen_moves = get_queen_moves(piece, occupied) & !team;
+            while queen_moves != 0 {
+                let index = queen_moves.trailing_zeros() as usize;
                 let to = 1u64 << index;
 
-                array[size] = parsing::create_move_no_prom(piece, to);
-                size += 1;
+                let move1 = Move::new(piece, to);
+                moves.add(move1);
 
-                moves ^= to;
+                queen_moves ^= to;
             }
 
             queens ^= piece;
         }
 
-        Moves::new(array, size)
+        moves
     }
 
     fn get_pseudo_legal_moves_black(&self) -> Moves {
 
         // For castling, we do not check if the squares between king and rook are attacked
 
-        let mut array: MoveArray = [0; MAX_MOVES];
-        let mut size: usize = 0;
+        let mut moves = Moves::empty();
 
         let king = self.array[KING_B];
         let info = self.array[INFO];
@@ -490,10 +493,9 @@ impl Fen {
         while king_moves != 0 {
             let index = king_moves.trailing_zeros() as usize;
             let to = 1u64 << index;
-            let move1 = parsing::create_move_no_prom(king, to);
+            let move1 = Move::new(king, to);
 
-            array[size] = move1;
-            size += 1;
+            moves.add(move1);
 
             king_moves ^= to;
         }
@@ -504,15 +506,13 @@ impl Fen {
         let queenside_free = occupied & BLACK_QUEENSIDE_SQUARES == 0;
 
         if kingside && kingside_free {
-            let move1 = parsing::create_move_no_prom(king, BLACK_KINGSIDE_MOVE_TO);
-            array[size] = move1;
-            size += 1;
+            let move1 = Move::new(king, BLACK_KINGSIDE_MOVE_TO);
+            moves.add(move1);
         }
 
         if queenside && queenside_free {
-            let move1 = parsing::create_move_no_prom(king, BLACK_QUEENSIDE_MOVE_TO);
-            array[size] = move1;
-            size += 1;
+            let move1 = Move::new(king, BLACK_QUEENSIDE_MOVE_TO);
+            moves.add(move1);
         }
 
         let mut pawns = self.array[PAWN_B];
@@ -531,19 +531,19 @@ impl Fen {
                 let to = 1u64 << index;
 
                 if promotes {
-                    array[size] = parsing::create_move(pawn, to, Prom::Queen);
-                    size += 1;
-                    array[size] = parsing::create_move(pawn, to, Prom::Bishop);
-                    size += 1;
-                    array[size] = parsing::create_move(pawn, to, Prom::Knight);
-                    size += 1;
-                    array[size] = parsing::create_move(pawn, to, Prom::Rook);
-                    size += 1;
+                    let move1 = Move::new_with_prom(pawn, to, Prom::Queen);
+                    let move2 = Move::new_with_prom(pawn, to, Prom::Bishop);
+                    let move3 = Move::new_with_prom(pawn, to, Prom::Knight);
+                    let move4 = Move::new_with_prom(pawn, to, Prom::Rook);
+
+                    moves.add(move1);
+                    moves.add(move2);
+                    moves.add(move3);
+                    moves.add(move4);
 
                 } else {
-                    array[size] = parsing::create_move_no_prom(pawn, to);
-                    size += 1;
-
+                    let move1 = Move::new(pawn, to);
+                    moves.add(move1);
                 }
 
                 pawn_moves ^= to;
@@ -557,15 +557,15 @@ impl Fen {
             let piece_index = knights.trailing_zeros() as usize;
             let piece = 1u64 << piece_index;
 
-            let mut moves = get_knight_moves(piece) & !team;
-            while moves != 0 {
-                let index = moves.trailing_zeros() as usize;
+            let mut knight_moves = get_knight_moves(piece) & !team;
+            while knight_moves != 0 {
+                let index = knight_moves.trailing_zeros() as usize;
                 let to = 1u64 << index;
 
-                array[size] = parsing::create_move_no_prom(piece, to);
-                size += 1;
+                let move1 = Move::new(piece, to);
+                moves.add(move1);
 
-                moves ^= to;
+                knight_moves ^= to;
             }
 
             knights ^= piece;
@@ -576,15 +576,15 @@ impl Fen {
             let piece_index = bishops.trailing_zeros() as usize;
             let piece = 1u64 << piece_index;
 
-            let mut moves = get_bishop_moves(piece, occupied) & !team;
-            while moves != 0 {
-                let index = moves.trailing_zeros() as usize;
+            let mut bishop_moves = get_bishop_moves(piece, occupied) & !team;
+            while bishop_moves != 0 {
+                let index = bishop_moves.trailing_zeros() as usize;
                 let to = 1u64 << index;
 
-                array[size] = parsing::create_move_no_prom(piece, to);
-                size += 1;
+                let move1 = Move::new(piece, to);
+                moves.add(move1);
 
-                moves ^= to;
+                bishop_moves ^= to;
             }
 
             bishops ^= piece;
@@ -595,15 +595,15 @@ impl Fen {
             let piece_index = rooks.trailing_zeros() as usize;
             let piece = 1u64 << piece_index;
 
-            let mut moves = get_rook_moves(piece, occupied) & !team;
-            while moves != 0 {
-                let index = moves.trailing_zeros() as usize;
+            let mut rook_moves = get_rook_moves(piece, occupied) & !team;
+            while rook_moves != 0 {
+                let index = rook_moves.trailing_zeros() as usize;
                 let to = 1u64 << index;
 
-                array[size] = parsing::create_move_no_prom(piece, to);
-                size += 1;
+                let move1 = Move::new(piece, to);
+                moves.add(move1);
 
-                moves ^= to;
+                rook_moves ^= to;
             }
 
             rooks ^= piece;
@@ -614,22 +614,34 @@ impl Fen {
             let piece_index = queens.trailing_zeros() as usize;
             let piece = 1u64 << piece_index;
 
-            let mut moves = get_queen_moves(piece, occupied) & !team;
-            while moves != 0 {
-                let index = moves.trailing_zeros() as usize;
+            let mut queen_moves = get_queen_moves(piece, occupied) & !team;
+            while queen_moves != 0 {
+                let index = queen_moves.trailing_zeros() as usize;
                 let to = 1u64 << index;
 
-                array[size] = parsing::create_move_no_prom(piece, to);
-                size += 1;
+                let move1 = Move::new(piece, to);
+                moves.add(move1);
 
-                moves ^= to;
+                queen_moves ^= to;
             }
 
             queens ^= piece;
         }
 
-        Moves::new(array, size)
+        moves
     }
 
+    fn get_moves_white(&self) -> Moves {
 
+        let mut moves = Moves::empty();
+
+        moves
+    }
+
+    fn get_moves_black(&self) -> Moves {
+
+        let mut moves = Moves::empty();
+
+        moves
+    }
 }

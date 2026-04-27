@@ -1,7 +1,5 @@
 use std::io;
 
-use crate::parsing;
-
 // -------------------- Bitboard --------------------
 
 pub const EMPTY: u64    = 0b0;
@@ -65,29 +63,6 @@ pub const ROOK: usize = 5;
 
 pub const MAX_MOVES: usize = 128;
 
-pub type Move = u16;
-pub type MoveArray = [Move; MAX_MOVES];
-
-pub struct Moves { pub array: MoveArray, pub size: usize }
-
-impl Moves {
-    pub fn new(array: MoveArray, size: usize) -> Self {
-        Self { array, size }
-    }
-
-    pub fn to_string(&self) -> String {
-        let mut result = "".to_string();
-
-        for i in 0..self.size {
-            let move1 = self.array[i];
-            result += &parsing::move_to_lan(move1);
-            result += ", ";
-        }
-
-        result
-    }
-}
-
 // -------------------- Tables --------------------
 
 pub type BitboardTable = [u64; 64];
@@ -106,32 +81,6 @@ pub const BLACK_KINGSIDE_RIGHTS: u64 =      0b0000000000000000000000100000000000
 pub const BLACK_QUEENSIDE_RIGHTS: u64 =     0b0000000000000000000000010000000000000000000000000000000000000000;
 
 pub const NO_ENPASSANT_FLAG: u64 =          0b0000000000000000000000000000000000000000000000000000000001000000;
-
-// -------------------- Promotion --------------------
-
-pub enum Prom { NoProm, Queen, Bishop, Knight, Rook, }
-
-impl Prom {
-    pub fn from_str(str: &str) -> Self {
-        match str {
-            "q" => Self::Queen,
-            "b" => Self::Bishop,
-            "n" => Self::Knight,
-            "r" => Self::Rook,
-            _ => Self::NoProm
-        }
-    }
-
-    pub fn to_string(&self) -> String {
-        match self {
-            Self::Queen => "q".to_string(),
-            Self::Bishop => "b".to_string(),
-            Self::Knight => "n".to_string(),
-            Self::Rook => "r".to_string(),
-            Self::NoProm => "".to_string(),
-        }
-    }
-}
 
 // -------------------- Castling --------------------
 

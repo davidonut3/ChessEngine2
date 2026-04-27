@@ -15,6 +15,7 @@ See if #[inline(always)] or #[inline] speeds things up
 
 Branchless programming
 
+Turn move into struct!!
 
 Movegen:
 

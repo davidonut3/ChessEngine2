@@ -5,8 +5,12 @@ pub mod movegen;
 pub mod fish;
 pub mod tests;
 pub mod games;
+pub mod moves;
+
+use std::num::ParseIntError;
 
 use crate::movegen::*;
+use crate::moves::Move;
 use crate::tests::*;
 use crate::utils::*;
 use crate::fen::Fen;
@@ -19,11 +23,13 @@ const COMMAND_HELP: &str = "
     Fen:
 
     pos default \t\t Get the default position.
-    pos [FEN notation] \t\t Get the given position.
-    move [LAN notation] \t Apply the given move to the current position.
+    pos [FEN] \t\t\t Get the given position.
+    move [LAN] \t\t\t Apply the given move to the current position.
     string \t\t\t Show the current position in FEN notation.
     board \t\t\t Show the board with info.
     moves \t\t\t Get the legal moves in the current position.
+    perft [depth] \t\t Perform perft at current position with given depth.
+    perft [FEN] [depth] \t Perform perft at given position with given depth.
 ";
 
 pub fn startup() {
@@ -89,7 +95,7 @@ fn fen() -> bool {
 
         if user_input.find("move ") == Some(0) {
             let lan = user_input.split_at(5).1;
-            let result = parsing::lan_to_move(lan);
+            let result = Move::from_str(lan);
 
             match result {
                 Ok(move1) => { fen.make_move(move1); fen.print_board(); },
@@ -101,6 +107,41 @@ fn fen() -> bool {
 
             let moves = fen.get_pseudo_legal_moves();
             println!("{}", moves.to_string())
+
+        }
+
+        if user_input.find("perft") == Some(0) {
+            let perft_str: Vec<&str> = user_input.trim().split_whitespace().collect();
+            if perft_str.len() != 2 && perft_str.len() != 3 {
+                println!("Error: Perft requires 1 or 2 arguments");
+                continue
+            }
+
+            let depth_index = perft_str.len() - 1;
+            let depth_result: Result<usize, ParseIntError> = perft_str[depth_index].parse();
+
+            if depth_result.is_err() {
+                println!("Error: Depth must be a positive integer");
+                continue
+            }
+
+            let depth = depth_result.unwrap();
+
+            let new_fen: Fen;
+            if perft_str.len() == 2 {
+                new_fen = fen.clone()
+            } else {
+                let result = Fen::from_str(perft_str[1]);
+
+                match result {
+                    Ok(ok_fen) => { new_fen = ok_fen },
+                    Err(error) => { println!("{}", error); continue }
+                }
+            }
+
+            let result = perft(depth, new_fen);
+            println!("{}", result.to_string())
+
 
         }
 
