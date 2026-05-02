@@ -397,3 +397,4 @@ pub fn recursive_perft(depth: usize, fen: Fen) -> usize {
 
     total
 }
+
