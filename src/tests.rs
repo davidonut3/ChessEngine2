@@ -368,7 +368,7 @@ pub fn test_pext_vs_ray_speed() {
 
 pub fn perft(depth: usize, fen: Fen) -> PerftResult {
     let mut result = PerftResult::empty();
-    result.moves = fen.get_pseudo_legal_moves();
+    result.moves = fen.get_moves();
 
     for i in 0..result.moves.size {
         let mut new_fen = fen.clone();
@@ -383,7 +383,7 @@ pub fn perft(depth: usize, fen: Fen) -> PerftResult {
 }
 
 pub fn recursive_perft(depth: usize, fen: Fen) -> usize {
-    let moves = fen.get_pseudo_legal_moves();
+    let moves = fen.get_moves();
 
     if depth == 1 { return moves.size }
 
