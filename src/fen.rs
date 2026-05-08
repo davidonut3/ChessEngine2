@@ -589,50 +589,9 @@ impl Fen {
     fn get_moves_white(&self) -> Moves {
 
         /*
-        Consider the following components of legal move generation:
-        - Generate pseudo legal moves
-        - Determine if king is in check:
-
-            Compute attacks by opponent pieces, count number of checking pieces
-
-            Sliders: 
-
-        - If double check or more -> only king moves
-
-            No castle, has to move away from attacks, not closer to enemy king, beware xray check
-
-        - If single check -> resolve check
-
-            No castle, move away or capture attacker, see above
-
-        - Determine and resolve pins
-
-            Compute pins by opponent sliders, restrict team pieces movement per pin
-
-            Do we keep a list or do we just have 8 bitboards? Test to see which is faster
-
-        - Enpassant:
-
-            Two edge cases:
-            - pin by two pieces: 8/8/8/KpP4r/8/8/8/7k w - - 0 1
-            - pin with opponent: 8/8/K7/1pP5/8/8/4b3/7k w - - 0 1
-
-            Is that all?
-
-        - Castling: castling is only allowed if the king and squares in between are not being attacked (rook being attacked is OK).
-
-
-        So, we start with computing enemy piece attacks, but not for enemy king. For knights and pawns, we can do the king as piece trick (in_check).
-
-        If the number of check is 2 or more, we can only move king to non-attacked squares.
-        Else, only one piece is attacking, so we can use one bitboard for this.
-
         OPTIMISATIONS:
 
-        We could remove branching at the number of checks by &-ing a bitboard of 0's when in double or more check, and a bitboard of 1's when not in check
-        Is this not just better?
-
-        Also, switch get_ _moves functions to index based? (Or rather one function for index, one for square?)
+        Switch get_ _moves functions to index based? (Or rather one function for index, one for square?)
         
         Is it more efficient to compute enemy attacks, or reverse attacks?
         We need this information for king moves and castling, reverse is probably better.
@@ -649,6 +608,8 @@ impl Fen {
 
         let king = self.array[KING_W];
         let info = self.array[INFO];
+        let mut ep = info_to_enpassant(info);
+        let ep_piece = ep >> 8;
 
         // The king cannot move to a square that has a team member
         let mut king_moves = get_king_moves(king) & !team;
@@ -703,15 +664,21 @@ impl Fen {
             check_mask |= king_bishop_moves & get_bishop_moves(bishop_checks, occupied)
         }
 
+        // We allow pawns to resolve checks by doing enpassant
+        let mut pawn_check_mask = check_mask;
+        if check_mask & self.array[PAWN_B] & ep_piece != 0 {
+            pawn_check_mask |= ep;
+        }
+
         // We will & the mask with the piece movements, so in case there is no check, we want this to do nothing
-        if check_mask == 0 { check_mask = u64::MAX }
+        if check_mask == 0 { check_mask = u64::MAX; pawn_check_mask = u64::MAX }
 
         // We compute the pins, we DO NOT consider enpassant edge cases here
         let mut pin_masks = [0u64; 8];
         let mut pin_count: usize = 0;
 
         // We only consider the opponents and the king as blockers
-        let pin_occupied = opps & king;
+        let pin_occupied = opps | king;
 
         let king_rook_pins = get_rook_moves(king, pin_occupied);
         let king_bishop_pins = get_bishop_moves(king, pin_occupied);
@@ -725,9 +692,9 @@ impl Fen {
             let index = rook_pins.trailing_zeros();
             let square = 1u64 << index;
 
-            let pin_mask = get_rook_moves(square, pin_occupied) | square;
+            let pin_mask = get_rook_moves(square, pin_occupied) & king_rook_pins;
             if (pin_mask & team).count_ones() == 1 {
-                pin_masks[pin_count] = pin_mask;
+                pin_masks[pin_count] = pin_mask | square;
                 pin_count += 1;
             }
 
@@ -740,9 +707,9 @@ impl Fen {
             let index = bishop_pins.trailing_zeros();
             let square = 1u64 << index;
 
-            let pin_mask = get_bishop_moves(square, pin_occupied) | square;
+            let pin_mask = get_bishop_moves(square, pin_occupied) & king_bishop_pins;
             if (pin_mask & team).count_ones() == 1 {
-                pin_masks[pin_count] = pin_mask;
+                pin_masks[pin_count] = pin_mask | square;
                 pin_count += 1;
             }
 
@@ -757,11 +724,11 @@ impl Fen {
         let queenside_free = occupied & WHITE_QUEENSIDE_SQUARES == 0;
 
         // We check if castling kingside is allowed and if there are no pieces in between
-        if kingside_rights && kingside_free {
+        if check_count == 0 && kingside_rights && kingside_free {
 
             // Checking if squares are under attack is relatively expensive
-            if self.is_square_attacked_white(WHITE_KINGSIDE_ATTACK_1, occupied) {
-                if self.is_square_attacked_white(WHITE_KINGSIDE_ATTACK_2, occupied) {
+            if !self.is_square_attacked_white(WHITE_KINGSIDE_ATTACK_1, occupied) {
+                if !self.is_square_attacked_white(WHITE_KINGSIDE_ATTACK_2, occupied) {
 
                     // In case the squares are free and not under attack, we allow castling
                     let move1 = Move::new(king, WHITE_KINGSIDE_MOVE_TO);
@@ -771,12 +738,12 @@ impl Fen {
         }
 
         // We check if castling queenside is allowed and if there are no pieces in between
-        if queenside_rights && queenside_free {
+        if check_count == 0 && queenside_rights && queenside_free {
 
             // Checking if squares are under attack is relatively expensive
             // Checking if squares are under attack is relatively expensive
-            if self.is_square_attacked_white(WHITE_QUEENSIDE_ATTACK_1, occupied) {
-                if self.is_square_attacked_white(WHITE_QUEENSIDE_ATTACK_2, occupied) {
+            if !self.is_square_attacked_white(WHITE_QUEENSIDE_ATTACK_1, occupied) {
+                if !self.is_square_attacked_white(WHITE_QUEENSIDE_ATTACK_2, occupied) {
 
                     // In case the squares are free and not under attack, we allow castling
                     let move1 = Move::new(king, WHITE_QUEENSIDE_MOVE_TO);
@@ -793,8 +760,6 @@ impl Fen {
         //      (1) Pin by two pieces, e.g. 8/8/8/KpP4r/8/8/8/7k w - b6 0 13
         //      (2) Pin by opponent, e.g. 8/8/K7/1pP5/8/8/4b3/7k w - b6 0 1
         // We prevent these by setting ep = EMPTY if they occur
-        let mut ep = info_to_enpassant(info);
-
         // We start with some checks that fail almost all of the time
         if ep != 0 {
 
@@ -806,13 +771,13 @@ impl Fen {
                 if ep_attacker.count_ones() == 1 {
 
                     // We compute the king moves, ignoring the two pieces, to check if there is a rook or a queen
-                    let ep_occupied = occupied & !(ep_attacker | (ep >> 8));
+                    let ep_occupied = occupied & !(ep_attacker | ep_piece);
                     let ep_pin_king_moves = get_rook_moves(king, ep_occupied) & RANK_5;
                     let ep_pin_attacker = ep_pin_king_moves & (self.array[ROOK_B] | self.array[QUEEN_B]);
 
                     // If there is zero attackers, this case does not occur
                     // If there is two attackers, the king must be in check, so enpassant would not be allowed anyway
-                    if ep_pin_attacker == 1 {
+                    if ep_pin_attacker.count_ones() == 1 {
 
                         // We compute the squares between the king and the attacker
                         // If there are two pieces in this mask, these must be the two pieces, so we prevent enpassant
@@ -826,9 +791,8 @@ impl Fen {
             // Case (2)
             } else {
 
-                let ep_piece = ep >> 8;
                 let ep_index = ep_piece.trailing_zeros() as usize;
-                let ep_diag = BISHOP_MOVES[ep_index];
+                let ep_diag = BISHOP_MOVES[ep_index] | ep_piece;
 
                 // For this case to occur the king must be on the same diagonal as the enpassant piece
                 if king & ep_diag != 0 {
@@ -844,7 +808,7 @@ impl Fen {
 
                         // If there is zero attackers, this case does not occur
                         // If there is two attackers, the king must be in check, so enpassant would not be allowed anyway
-                        if ep_pin_attacker == 1 {
+                        if ep_pin_attacker.count_ones() == 1 {
 
                             // We compute the squares between the king and the attacker
                             // If there is one piece in this mask, this must be the enpassant piece, so we prevent enpassant
@@ -858,6 +822,19 @@ impl Fen {
             }
         }
 
+        // println!("Check");
+        // print_bitboard(check_mask);
+        // print_bitboard(pawn_check_mask);
+
+        // println!("Pins");
+        // for i in 0..pin_count {
+        //     print_bitboard(pin_masks[i]);
+        // }
+
+        // println!("Enpassant");
+        // print_bitboard(ep);
+        // println!("END");
+
         // We generate the moves for the pawns
         let mut pawns = self.array[PAWN_W];
         while pawns != 0 {
@@ -866,7 +843,7 @@ impl Fen {
 
             let pawn_attacks = get_white_pawn_attacks(pawn) & (opps | ep);
             let pawn_steps = get_white_pawn_steps(pawn, occupied);
-            let mut pawn_moves = (pawn_attacks | pawn_steps) & check_mask;
+            let mut pawn_moves = (pawn_attacks | pawn_steps) & pawn_check_mask;
 
             for i in 0..pin_count {
                 if pawn & pin_masks[i] != 0 {
@@ -1023,6 +1000,7 @@ impl Fen {
 
         let king = self.array[KING_B];
         let info = self.array[INFO];
+        let mut ep = info_to_enpassant(info);
 
         // The king cannot move to a square that has a team member
         let mut king_moves = get_king_moves(king) & !team;
@@ -1077,15 +1055,21 @@ impl Fen {
             check_mask |= king_bishop_moves & get_bishop_moves(bishop_checks, occupied)
         }
 
+        // We allow pawns to resolve checks by doing enpassant
+        let mut pawn_check_mask = check_mask;
+        if check_mask & self.array[PAWN_W] & (ep << 8) != 0 {
+            pawn_check_mask |= ep;
+        }
+
         // We will & the mask with the piece movements, so in case there is no check, we want this to do nothing
-        if check_mask == 0 { check_mask = u64::MAX }
+        if check_mask == 0 { check_mask = u64::MAX; pawn_check_mask = u64::MAX }
 
         // We compute the pins, we DO NOT consider enpassant edge cases here
         let mut pin_masks = [0u64; 8];
         let mut pin_count: usize = 0;
 
         // We only consider the opponents and the king as blockers
-        let pin_occupied = opps & king;
+        let pin_occupied = opps | king;
 
         let king_rook_pins = get_rook_moves(king, pin_occupied);
         let king_bishop_pins = get_bishop_moves(king, pin_occupied);
@@ -1099,9 +1083,9 @@ impl Fen {
             let index = rook_pins.trailing_zeros();
             let square = 1u64 << index;
 
-            let pin_mask = get_rook_moves(square, pin_occupied) | square;
+            let pin_mask = get_rook_moves(square, pin_occupied) & king_rook_pins;
             if (pin_mask & team).count_ones() == 1 {
-                pin_masks[pin_count] = pin_mask;
+                pin_masks[pin_count] = pin_mask | square;
                 pin_count += 1;
             }
 
@@ -1114,9 +1098,9 @@ impl Fen {
             let index = bishop_pins.trailing_zeros();
             let square = 1u64 << index;
 
-            let pin_mask = get_bishop_moves(square, pin_occupied) | square;
+            let pin_mask = get_bishop_moves(square, pin_occupied) & king_bishop_pins;
             if (pin_mask & team).count_ones() == 1 {
-                pin_masks[pin_count] = pin_mask;
+                pin_masks[pin_count] = pin_mask | square;
                 pin_count += 1;
             }
 
@@ -1131,11 +1115,11 @@ impl Fen {
         let queenside_free = occupied & BLACK_QUEENSIDE_SQUARES == 0;
 
         // We check if castling kingside is allowed and if there are no pieces in between
-        if kingside_rights && kingside_free {
+        if  check_count == 0 && kingside_rights && kingside_free {
 
             // Checking if squares are under attack is relatively expensive
-            if self.is_square_attacked_black(BLACK_KINGSIDE_ATTACK_1, occupied) {
-                if self.is_square_attacked_black(BLACK_KINGSIDE_ATTACK_2, occupied) {
+            if !self.is_square_attacked_black(BLACK_KINGSIDE_ATTACK_1, occupied) {
+                if !self.is_square_attacked_black(BLACK_KINGSIDE_ATTACK_2, occupied) {
 
                     // In case the squares are free and not under attack, we allow castling
                     let move1 = Move::new(king, BLACK_KINGSIDE_MOVE_TO);
@@ -1145,12 +1129,12 @@ impl Fen {
         }
 
         // We check if castling queenside is allowed and if there are no pieces in between
-        if queenside_rights && queenside_free {
+        if  check_count == 0 && queenside_rights && queenside_free {
 
             // Checking if squares are under attack is relatively expensive
             // Checking if squares are under attack is relatively expensive
-            if self.is_square_attacked_black(BLACK_QUEENSIDE_ATTACK_1, occupied) {
-                if self.is_square_attacked_black(BLACK_QUEENSIDE_ATTACK_2, occupied) {
+            if !self.is_square_attacked_black(BLACK_QUEENSIDE_ATTACK_1, occupied) {
+                if !self.is_square_attacked_black(BLACK_QUEENSIDE_ATTACK_2, occupied) {
 
                     // In case the squares are free and not under attack, we allow castling
                     let move1 = Move::new(king, BLACK_QUEENSIDE_MOVE_TO);
@@ -1167,12 +1151,10 @@ impl Fen {
         //      (1) Pin by two pieces, e.g. 8/8/8/KpP4r/8/8/8/7k w - b6 0 13
         //      (2) Pin by opponent, e.g. 8/8/K7/1pP5/8/8/4b3/7k w - b6 0 1
         // We prevent these by setting ep = EMPTY if they occur
-        let mut ep = info_to_enpassant(info);
-
         // We start with some checks that fail almost all of the time
         if ep != 0 {
 
-            // Case (1): For this case to occur the king must be on the fifth rank
+            // Case (1): For this case to occur the king must be on the fourth rank
             if king & RANK_4 != 0 {
                 let ep_attacker = get_white_pawn_attacks(ep) & self.array[PAWN_B];
 
@@ -1186,7 +1168,7 @@ impl Fen {
 
                     // If there is zero attackers, this case does not occur
                     // If there is two attackers, the king must be in check, so enpassant would not be allowed anyway
-                    if ep_pin_attacker == 1 {
+                    if ep_pin_attacker.count_ones() == 1 {
 
                         // We compute the squares between the king and the attacker
                         // If there are two pieces in this mask, these must be the two pieces, so we prevent enpassant
@@ -1218,7 +1200,7 @@ impl Fen {
 
                         // If there is zero attackers, this case does not occur
                         // If there is two attackers, the king must be in check, so enpassant would not be allowed anyway
-                        if ep_pin_attacker == 1 {
+                        if ep_pin_attacker.count_ones() == 1 {
 
                             // We compute the squares between the king and the attacker
                             // If there is one piece in this mask, this must be the enpassant piece, so we prevent enpassant
@@ -1232,6 +1214,19 @@ impl Fen {
             }
         }
 
+        // println!("Check");
+        // print_bitboard(check_mask);
+        // print_bitboard(pawn_check_mask);
+
+        // println!("Pins");
+        // for i in 0..pin_count {
+        //     print_bitboard(pin_masks[i]);
+        // }
+
+        // println!("Enpassant");
+        // print_bitboard(ep);
+        // println!("END");
+
         // We generate the moves for the pawns
         let mut pawns = self.array[PAWN_B];
         while pawns != 0 {
@@ -1240,7 +1235,7 @@ impl Fen {
 
             let pawn_attacks = get_black_pawn_attacks(pawn) & (opps | ep);
             let pawn_steps = get_black_pawn_steps(pawn, occupied);
-            let mut pawn_moves = (pawn_attacks | pawn_steps) & check_mask;
+            let mut pawn_moves = (pawn_attacks | pawn_steps) & pawn_check_mask;
 
             for i in 0..pin_count {
                 if pawn & pin_masks[i] != 0 {

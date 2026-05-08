@@ -30,9 +30,9 @@ https://peterellisjones.com/posts/generating-legal-chess-moves-efficiently/
 
 https://www.fide.com/FIDE/handbook/LawsOfChess.pdf
 
-
-
 Code quality:
+
+We can remove a bunch of tests in tests.
 
 Learn how the compiler optimizes things, and optimize for readibility ourselfs.
 Add meaningfull comments, and add documenation on complicated parts.
@@ -66,8 +66,30 @@ Pinned by opponent:
 8/5b2/8/2PpP3/8/8/K7/7k w - d6 0 1
 6b1/8/4q3/3pP3/8/1K6/8/7k w - d6 0 1
 8/8/7K/6pP/8/8/8/2q4k w - g6 0 1
+K7/3B4/8/8/5Pp1/7k/8/8 b - f3 0 1
 
 Others:
 
 8/7q/kn4R1/5K2/8/8/8/8 w - - 0 1
 2r3k1/8/4r3/8/2B5/2K5/8/8 w - - 0 1
+
+ChatGPT:
+
+4k3/8/8/8/8/8/3r1r2/4K3 w - - 0 1
+4k3/8/8/8/8/8/4r3/4K3 w - - 0 1
+4k3/8/8/8/8/2b5/3B4/4K3 w - - 0 1
+4k3/8/8/8/8/2b5/3N4/4K3 w - - 0 1
+4k3/8/8/8/8/8/3P4/4rK2 w - - 0 1
+4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1
+4k3/8/8/3pP3/8/8/4r3/4K3 w - d6 0 1
+r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1
+r3k2r/8/8/8/8/8/8/R2QK2R w KQkq - 0 1
+r3k2r/8/8/8/8/8/5r2/R3K2R w KQkq - 0 1
+r3k2r/8/8/8/8/8/4r3/R3K2R w KQkq - 0 1
+4k3/P7/8/8/8/8/8/4K3 w - - 0 1
+4k3/1p6/P7/8/8/8/8/4K3 w - - 0 1
+4k3/8/8/8/8/8/3R4/4K2r w - - 0 1
+7k/5Q2/6K1/8/8/8/8/8 b - - 0 1
+7k/6Q1/6K1/8/8/8/8/8 b - - 0 1
+4k3/8/8/8/2b5/8/3R4/4K2r w - - 0 1
+4k3/8/8/8/8/2r5/3B4/4K3 w - - 0 1

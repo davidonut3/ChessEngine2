@@ -4,10 +4,12 @@ use std::io::{Write, BufRead, BufReader};
 use crate::fen::Fen;
 use crate::moves::*;
 
+pub const STOCKFISH: &str = "Stockfish";
 pub const BESTMOVE: &str = "bestmove";
 pub const NODES: &str = "Nodes";
 pub const CHECKERS: &str = "Checkers";
 pub const INFO: &str = "info";
+pub const EMPTY_STR: &str = "";
 
 pub const DEFAULT_NODES: u64 = 1000000;
 
@@ -53,14 +55,15 @@ pub fn ask_the_fish(commands: Vec<&str>, stop_at: &str) -> Vec<String> {
         if line.starts_with(stop_at) {
             output.push(line);
             break;
+        } else if !line.starts_with(STOCKFISH) {
+            output.push(line);
         }
-        output.push(line);
     }
 
     output
 }
 
-pub fn fish_perft(fen: Fen, depth: usize) -> PerftResult {
+pub fn fish_perft(depth: usize, fen: &Fen) -> PerftResult {
     let mut result = PerftResult::empty();
 
     let pos_cmd: String = format!("position fen {}", fen.to_string());
@@ -76,7 +79,7 @@ pub fn fish_perft(fen: Fen, depth: usize) -> PerftResult {
             break;
         }
 
-        if !line.starts_with(INFO) {
+        if !line.starts_with(INFO) && !(line == EMPTY_STR) {
             let split: Vec<&str> = line.trim().split_whitespace().collect();
             let lan = split[0].replace(":", "");
             let move1 = Move::from_str(&lan).unwrap();

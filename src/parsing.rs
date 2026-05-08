@@ -322,9 +322,10 @@ pub fn print_u64(value: u64) {
 /// Prints the given bitboard as a 8x8 square
 pub fn print_bitboard(bitboard: u64) {
     for i in 0..64 {
-        let bit_set = if bitboard & (FIRST >> i) == 0 { 0 } else { 1 };
+        let bit_set = if bitboard & (FIRST >> i) == 0 { ". " } else { "1 " };
         print!("{}", bit_set);
 
         if i % 8 == 7 { println!() }
     }
+    println!();
 }
