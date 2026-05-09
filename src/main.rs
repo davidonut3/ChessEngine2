@@ -32,6 +32,8 @@ const COMMAND_HELP: &str = "
     compare \t\t Compare perft with stockfish in predetermined positions.
     compare [depth] \t\t Compare perft with stockfish at current position with given depth.
     compare [FEN] [depth] \t Compare perft with stockfish at given position with given depth.
+    speed \t\t Test the number of moves generated per second (default position, depth 7).
+    speed [count] \t Test the speed of getting moves from count many games.
 ";
 
 pub fn startup() {
@@ -173,6 +175,34 @@ fn main() {
             }
 
             compare_perft_results(depth, &new_fen);
+        }
+
+        if user_input.find("speed") == Some(0) {
+            let split: Vec<&str> = user_input.trim().split_whitespace().collect();
+            if split.len() > 2 {
+                println!("Error: Speed requires at most 1 argument");
+                continue
+            }
+
+            if split.len() == 1 {
+                moves_per_second();
+                continue
+            }
+
+            let count_result: Result<usize, ParseIntError> = split[1].parse();
+
+            if count_result.is_err() {
+                println!("Error: Depth must be a positive integer");
+                continue
+            }
+
+            let count = count_result.unwrap();
+            if count < 1 {
+                println!("Error: Depth must be greater than 0");
+                continue
+            }
+
+            move_gen_perft(count)
         }
 
         if user_input == "string" { println!("{}", fen.to_string()) }

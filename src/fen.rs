@@ -592,9 +592,6 @@ impl Fen {
         OPTIMISATIONS:
 
         Switch get_ _moves functions to index based? (Or rather one function for index, one for square?)
-        
-        Is it more efficient to compute enemy attacks, or reverse attacks?
-        We need this information for king moves and castling, reverse is probably better.
 
         Do we do pins in a while loop? Is there another option?
 
@@ -821,19 +818,6 @@ impl Fen {
                 }
             }
         }
-
-        // println!("Check");
-        // print_bitboard(check_mask);
-        // print_bitboard(pawn_check_mask);
-
-        // println!("Pins");
-        // for i in 0..pin_count {
-        //     print_bitboard(pin_masks[i]);
-        // }
-
-        // println!("Enpassant");
-        // print_bitboard(ep);
-        // println!("END");
 
         // We generate the moves for the pawns
         let mut pawns = self.array[PAWN_W];
@@ -1213,19 +1197,6 @@ impl Fen {
                 }
             }
         }
-
-        // println!("Check");
-        // print_bitboard(check_mask);
-        // print_bitboard(pawn_check_mask);
-
-        // println!("Pins");
-        // for i in 0..pin_count {
-        //     print_bitboard(pin_masks[i]);
-        // }
-
-        // println!("Enpassant");
-        // print_bitboard(ep);
-        // println!("END");
 
         // We generate the moves for the pawns
         let mut pawns = self.array[PAWN_B];
