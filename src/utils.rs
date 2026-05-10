@@ -179,3 +179,12 @@ pub fn get_file(bitboard: u64) -> u64 {
     FILES[index]
 }
 
+#[inline(always)]
+pub fn rank_up(bitboard: u64) -> u64 {
+    bitboard << 8
+}
+
+#[inline(always)]
+pub fn rank_down(bitboard: u64) -> u64 {
+    bitboard >> 8
+}

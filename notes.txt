@@ -3,9 +3,17 @@ Move generation before optimization:
 Getting 3195901860 moves took 8.017258 seconds, which is 398.6278M nodes per second
 
 Optimizations:
-- First: Macro
 
 SWITCH get_moves FUNCTIONS TO index: usize INSTEAD OF square: u64 !!!
+
+/*
+OPTIMISATIONS:
+
+Switch get_ _moves functions to index based? (Or rather one function for index, one for square?)
+
+Do we do pins in a while loop? Is there another option?
+
+*/
 
 
 Other things:

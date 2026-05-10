@@ -1,8 +1,610 @@
-use crate::parsing::info_to_enpassant;
+use crate::parsing::*;
 use crate::utils::*;
-use crate::parsing;
 use crate::movegen::*;
 use crate::moves::*;
+
+macro_rules! gen_pseudo_legal {
+    (
+        $name:ident,
+
+        $king:ident,
+        $pawn:ident,
+        $knight:ident,
+        $bishop:ident,
+        $rook:ident,
+        $queen:ident,
+
+        $get_team:ident,
+        $get_opps:ident,
+
+        $kingside_rights:ident,
+        $queenside_rights:ident,
+        $kingside_squares:ident,
+        $queenside_squares:ident,
+        $kingside_to:ident,
+        $queenside_to:ident,
+
+        $pawn_attacks:ident,
+        $pawn_steps:ident,
+        $promotion_rank:ident,
+
+    ) => {
+        fn $name(&self) -> Moves {
+            // For castling, we do not check if the squares between king and rook are attacked
+
+            let mut moves = Moves::empty();
+
+            let king = self.array[$king];
+            let info = self.array[INFO];
+
+            let opponents = $get_opps(&self.array);
+            let team = $get_team(&self.array);
+            let occupied = opponents | team;
+
+            let mut king_moves = get_king_moves(king) & !team;
+            while king_moves != 0 {
+                let index = king_moves.trailing_zeros() as usize;
+                let to = 1u64 << index;
+                let move1 = Move::new(king, to);
+                moves.add(move1);
+
+                king_moves ^= to;
+            }
+
+            let kingside = info & $kingside_rights != 0;
+            let queenside = info & $queenside_rights != 0;
+            let kingside_free = occupied & $kingside_squares == 0;
+            let queenside_free = occupied & $queenside_squares == 0;
+
+            if kingside && kingside_free {
+                let move1 = Move::new(king, $kingside_to);
+                moves.add(move1);
+            }
+
+            if queenside && queenside_free {
+                let move1 = Move::new(king, $queenside_to);
+                moves.add(move1);
+            }
+
+            let mut pawns = self.array[$pawn];
+            while pawns != 0 {
+                let pawn_index = pawns.trailing_zeros() as usize;
+                let pawn = 1u64 << pawn_index;
+
+                let pawn_attacks = $pawn_attacks(pawn) & (opponents | info_to_enpassant(info));
+                let pawn_steps = $pawn_steps(pawn, occupied);
+                let mut pawn_moves = pawn_attacks | pawn_steps;
+
+                let promotes = pawn & $promotion_rank != 0;
+
+                while pawn_moves != 0 {
+                    let index = pawn_moves.trailing_zeros() as usize;
+                    let to = 1u64 << index;
+
+                    if promotes {
+                        let move1 = Move::new_with_prom(pawn, to, Prom::Queen);
+                        let move2 = Move::new_with_prom(pawn, to, Prom::Bishop);
+                        let move3 = Move::new_with_prom(pawn, to, Prom::Knight);
+                        let move4 = Move::new_with_prom(pawn, to, Prom::Rook);
+
+                        moves.add(move1);
+                        moves.add(move2);
+                        moves.add(move3);
+                        moves.add(move4);
+
+                    } else {
+                        let move1 = Move::new(pawn, to);
+                        moves.add(move1);
+                    }
+
+                    pawn_moves ^= to;
+                }
+
+                pawns ^= pawn;
+            }
+
+            let mut knights = self.array[$knight];
+            while knights != 0 {
+                let piece_index = knights.trailing_zeros() as usize;
+                let piece = 1u64 << piece_index;
+
+                let mut knight_moves = get_knight_moves(piece) & !team;
+                while knight_moves != 0 {
+                    let index = knight_moves.trailing_zeros() as usize;
+                    let to = 1u64 << index;
+
+                    let move1 = Move::new(piece, to);
+                    moves.add(move1);
+
+                    knight_moves ^= to;
+                }
+
+                knights ^= piece;
+            }
+
+            let mut bishops = self.array[$bishop];
+            while bishops != 0 {
+                let piece_index = bishops.trailing_zeros() as usize;
+                let piece = 1u64 << piece_index;
+
+                let mut bishop_moves = get_bishop_moves(piece, occupied) & !team;
+                while bishop_moves != 0 {
+                    let index = bishop_moves.trailing_zeros() as usize;
+                    let to = 1u64 << index;
+
+                    let move1 = Move::new(piece, to);
+                    moves.add(move1);
+
+                    bishop_moves ^= to;
+                }
+
+                bishops ^= piece;
+            }
+
+            let mut rooks = self.array[$rook];
+            while rooks != 0 {
+                let piece_index = rooks.trailing_zeros() as usize;
+                let piece = 1u64 << piece_index;
+
+                let mut rook_moves = get_rook_moves(piece, occupied) & !team;
+                while rook_moves != 0 {
+                    let index = rook_moves.trailing_zeros() as usize;
+                    let to = 1u64 << index;
+
+                    let move1 = Move::new(piece, to);
+                    moves.add(move1);
+
+                    rook_moves ^= to;
+                }
+
+                rooks ^= piece;
+            }
+
+            let mut queens = self.array[$queen];
+            while queens != 0 {
+                let piece_index = queens.trailing_zeros() as usize;
+                let piece = 1u64 << piece_index;
+
+                let mut queen_moves = get_queen_moves(piece, occupied) & !team;
+                while queen_moves != 0 {
+                    let index = queen_moves.trailing_zeros() as usize;
+                    let to = 1u64 << index;
+
+                    let move1 = Move::new(piece, to);
+                    moves.add(move1);
+
+                    queen_moves ^= to;
+                }
+
+                queens ^= piece;
+            }
+
+            moves
+        }
+
+    };
+}
+
+macro_rules! gen_legal {
+    (
+        $name:ident,
+
+        $king:ident,
+        $pawn:ident,
+        $knight:ident,
+        $bishop:ident,
+        $rook:ident,
+        $queen:ident,
+
+        $opp_pawn:ident,
+        $opp_knight:ident,
+        $opp_bishop:ident,
+        $opp_rook:ident,
+        $opp_queen:ident,
+
+        $get_team:ident,
+        $get_opps:ident,
+
+        $kingside_rights:ident,
+        $queenside_rights:ident,
+        $kingside_squares:ident,
+        $queenside_squares:ident,
+        $kingside_to:ident,
+        $queenside_to:ident,
+        $kingside_attack_1:ident,
+        $kingside_attack_2:ident,
+        $queenside_attack_1:ident,
+        $queenside_attack_2:ident,
+
+        $pawn_attacks:ident,
+        $pawn_steps:ident,
+        $promotion_rank:ident,
+
+        $opp_pawn_attacks:ident,
+        $ep_rank:ident,
+        $rank_backward:ident,
+
+        $square_attacked:ident,
+    ) => {
+        fn $name(&self) -> Moves {
+            let mut moves = Moves::empty();
+
+            let team = $get_team(&self.array);
+            let opps = $get_opps(&self.array);
+            let occupied = team | opps;
+
+            let king = self.array[$king];
+            let info = self.array[INFO];
+            let mut ep = info_to_enpassant(info);
+            let ep_piece = $rank_backward(ep);
+
+            // The king cannot move to a square that has a team member
+            let mut king_moves = get_king_moves(king) & !team;
+
+            // We determine the positions of the pieces that check the king
+            // We use the sliding moves later to compute the check mask
+            // We see the queen as a rook or as a bishop whenever applicable
+
+            let knight_checks = get_knight_moves(king) & self.array[$opp_knight];
+            let pawn_checks = $pawn_attacks(king) & self.array[$opp_pawn];
+
+            let king_rook_moves = get_rook_moves(king, occupied);
+            let rook_checks = king_rook_moves & (self.array[$opp_rook] | self.array[$opp_queen]);
+
+            let king_bishop_moves = get_bishop_moves(king, occupied);
+            let bishop_checks = king_bishop_moves & (self.array[$opp_bishop] | self.array[$opp_queen]);
+
+            let checking_pieces = knight_checks | pawn_checks | rook_checks | bishop_checks;
+            let check_count: u32 = checking_pieces.count_ones();
+
+            // We add the king moves to the move list
+            let occupied_except_king = occupied & !king;
+            while king_moves != 0 {
+                let index = king_moves.trailing_zeros() as usize;
+                let to = 1u64 << index;
+
+                // We remove the king from the board, so that squares 'behind' the king are also checked, preventing backwards check evasion
+                if !self.$square_attacked(to, occupied_except_king) {
+                    let move1 = Move::new(king, to);
+                    moves.add(move1);
+                }
+
+                king_moves ^= to;
+            }
+
+            // In case of two or more checks, only the king can move, so we return only those moves
+            if check_count > 1 { return moves }
+
+            // From now on, we can assume that at most one piece is attacking the king
+            // Do note that we have not added the castling moves at this point
+
+            // We compute the check_mask, which tells the pieces where they need to move to resolve check
+            // In case of a sliding check, it can be resolved by capturing the piece, or moving in between king and attacker
+            // In case of a non-sliding check, it can only be resolved by capturing the piece
+            // So, we start with checking_pieces, which has only one bit set, and add the 'in between' squares
+            // We can put *_checks into the get_*_moves function, since it can have at most one bit set
+            let mut check_mask = checking_pieces;
+
+            if rook_checks != 0 {
+                check_mask |= king_rook_moves & get_rook_moves(rook_checks, occupied)
+            } else if bishop_checks != 0 {
+                check_mask |= king_bishop_moves & get_bishop_moves(bishop_checks, occupied)
+            }
+
+            // We allow pawns to resolve checks by doing enpassant
+            let mut pawn_check_mask = check_mask;
+            if check_mask & self.array[$opp_pawn] & ep_piece != 0 {
+                pawn_check_mask |= ep;
+            }
+
+            // We will & the mask with the piece movements, so in case there is no check, we want this to do nothing
+            if check_mask == 0 { check_mask = u64::MAX; pawn_check_mask = u64::MAX }
+
+            // We compute the pins, we DO NOT consider enpassant edge cases here
+            let mut pin_masks = [0u64; 8];
+            let mut pin_count: usize = 0;
+
+            // We only consider the opponents and the king as blockers
+            let pin_occupied = opps | king;
+
+            let king_rook_pins = get_rook_moves(king, pin_occupied);
+            let king_bishop_pins = get_bishop_moves(king, pin_occupied);
+
+            let mut rook_pins = king_rook_pins & (self.array[$opp_rook] | self.array[$opp_queen]);
+            let mut bishop_pins = king_bishop_pins & (self.array[$opp_bishop] | self.array[$opp_queen]);
+
+            // We check if there is exactly one team member between the king and an opponent rook or queen
+            // If so, we add this to the list of pin masks, to later check with the team members
+            while rook_pins != 0 {
+                let index = rook_pins.trailing_zeros();
+                let square = 1u64 << index;
+
+                let pin_mask = get_rook_moves(square, pin_occupied) & king_rook_pins;
+                if (pin_mask & team).count_ones() == 1 {
+                    pin_masks[pin_count] = pin_mask | square;
+                    pin_count += 1;
+                }
+
+                rook_pins ^= square
+            }
+
+            // We check if there is exactly one team member between the king and an opponent bishop or queen
+            // If so, we add this to the list of pin masks, to later check with the team members
+            while bishop_pins != 0 {
+                let index = bishop_pins.trailing_zeros();
+                let square = 1u64 << index;
+
+                let pin_mask = get_bishop_moves(square, pin_occupied) & king_bishop_pins;
+                if (pin_mask & team).count_ones() == 1 {
+                    pin_masks[pin_count] = pin_mask | square;
+                    pin_count += 1;
+                }
+
+                bishop_pins ^= square
+            }
+
+            // For castling, we assume that the king and rooks are in the correct positions if the rights are set
+            let kingside_rights = info & $kingside_rights != 0;
+            let queenside_rights = info & $queenside_rights != 0;
+
+            let kingside_free = occupied & $kingside_squares == 0;
+            let queenside_free = occupied & $queenside_squares == 0;
+
+            // We check if castling kingside is allowed and if there are no pieces in between
+            if check_count == 0 && kingside_rights && kingside_free {
+
+                // Checking if squares are under attack is relatively expensive
+                if !self.$square_attacked($kingside_attack_1, occupied) {
+                    if !self.$square_attacked($kingside_attack_2, occupied) {
+
+                        // In case the squares are free and not under attack, we allow castling
+                        let move1 = Move::new(king, $kingside_to);
+                        moves.add(move1);
+                    }
+                }
+            }
+
+            // We check if castling queenside is allowed and if there are no pieces in between
+            if check_count == 0 && queenside_rights && queenside_free {
+
+                // Checking if squares are under attack is relatively expensive
+                // Checking if squares are under attack is relatively expensive
+                if !self.$square_attacked($queenside_attack_1, occupied) {
+                    if !self.$square_attacked($queenside_attack_2, occupied) {
+
+                        // In case the squares are free and not under attack, we allow castling
+                        let move1 = Move::new(king, $queenside_to);
+                        moves.add(move1);
+                    }
+                }
+            }
+
+            // We are now ready to generate moves for the other pieces
+            // We start with the pawns, since their behavior is the most complicated
+            // First, we have to determine whether we can enpassant or not
+
+            // The following is to prevent the enpassant edge cases:
+            //      (1) Pin by two pieces, e.g. 8/8/8/KpP4r/8/8/8/7k w - b6 0 13
+            //      (2) Pin by opponent, e.g. 8/8/K7/1pP5/8/8/4b3/7k w - b6 0 1
+            // We prevent these by setting ep = EMPTY if they occur
+            // We start with some checks that fail almost all of the time
+            if ep != 0 {
+
+                // Case (1): For this case to occur the king must be on the fifth rank
+                if king & $ep_rank != 0 {
+                    let ep_attacker = $opp_pawn_attacks(ep) & self.array[$pawn];
+
+                    // If there is zero or two pawns that can take the enpassant, this case does not occur
+                    if ep_attacker.count_ones() == 1 {
+
+                        // We compute the king moves, ignoring the two pieces, to check if there is a rook or a queen
+                        let ep_occupied = occupied & !(ep_attacker | ep_piece);
+                        let ep_pin_king_moves = get_rook_moves(king, ep_occupied) & $ep_rank;
+                        let ep_pin_attacker = ep_pin_king_moves & (self.array[$opp_rook] | self.array[$opp_queen]);
+
+                        // If there is zero attackers, this case does not occur
+                        // If there is two attackers, the king must be in check, so enpassant would not be allowed anyway
+                        if ep_pin_attacker.count_ones() == 1 {
+
+                            // We compute the squares between the king and the attacker
+                            // If there are two pieces in this mask, these must be the two pieces, so we prevent enpassant
+                            let ep_mask = get_rook_moves(ep_pin_attacker, ep_occupied) & ep_pin_king_moves;
+                            if (ep_mask & occupied).count_ones() == 2 {
+                                ep = EMPTY;
+                            }
+                        }
+                    }
+
+                // Case (2)
+                } else {
+
+                    let ep_index = ep_piece.trailing_zeros() as usize;
+                    let ep_diag = BISHOP_MOVES[ep_index] | ep_piece;
+
+                    // For this case to occur the king must be on the same diagonal as the enpassant piece
+                    if king & ep_diag != 0 {
+
+                        let ep_attacker = $opp_pawn_attacks(ep) & self.array[$pawn];
+
+                        // If there is no piece that can take the enpassant, this case cannot occur.
+                        if ep_attacker.count_ones() != 0 {
+
+                            let ep_occupied = occupied & !ep_piece;
+                            let ep_pin_king_moves = get_bishop_moves(king, ep_occupied) & ep_diag;
+                            let ep_pin_attacker = ep_pin_king_moves & (self.array[$opp_bishop] | self.array[$opp_queen]);
+
+                            // If there is zero attackers, this case does not occur
+                            // If there is two attackers, the king must be in check, so enpassant would not be allowed anyway
+                            if ep_pin_attacker.count_ones() == 1 {
+
+                                // We compute the squares between the king and the attacker
+                                // If there is one piece in this mask, this must be the enpassant piece, so we prevent enpassant
+                                let ep_mask = get_bishop_moves(ep_pin_attacker, ep_occupied) & ep_pin_king_moves;
+                                if (ep_mask & occupied).count_ones() == 1 {
+                                    ep = EMPTY;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // We generate the moves for the pawns
+            let mut pawns = self.array[$pawn];
+            while pawns != 0 {
+                let pawn_index = pawns.trailing_zeros() as usize;
+                let piece = 1u64 << pawn_index;
+
+                let pawn_attacks = $pawn_attacks(piece) & (opps | ep);
+                let pawn_steps = $pawn_steps(piece, occupied);
+                let mut pawn_moves = (pawn_attacks | pawn_steps) & pawn_check_mask;
+
+                for i in 0..pin_count {
+                    if piece & pin_masks[i] != 0 {
+                        pawn_moves &= pin_masks[i];
+                    }
+                }
+
+                let promotes = piece & $promotion_rank != 0;
+
+                while pawn_moves != 0 {
+                    let index = pawn_moves.trailing_zeros() as usize;
+                    let to = 1u64 << index;
+
+                    if promotes {
+                        let move1 = Move::new_with_prom(piece, to, Prom::Queen);
+                        let move2 = Move::new_with_prom(piece, to, Prom::Bishop);
+                        let move3 = Move::new_with_prom(piece, to, Prom::Knight);
+                        let move4 = Move::new_with_prom(piece, to, Prom::Rook);
+
+                        moves.add(move1);
+                        moves.add(move2);
+                        moves.add(move3);
+                        moves.add(move4);
+
+                    } else {
+                        let move1 = Move::new(piece, to);
+                        moves.add(move1);
+                    }
+
+                    pawn_moves ^= to;
+                }
+
+                pawns ^= piece;
+            }
+
+            // We generate the moves for the knights
+            let mut knights = self.array[$knight];
+            while knights != 0 {
+                let piece_index = knights.trailing_zeros() as usize;
+                let piece = 1u64 << piece_index;
+
+                let mut knight_moves = get_knight_moves(piece) & !team & check_mask;
+
+                for i in 0..pin_count {
+                    if piece & pin_masks[i] != 0 {
+                        knight_moves &= pin_masks[i];
+                    }
+                }
+
+                while knight_moves != 0 {
+                    let index = knight_moves.trailing_zeros() as usize;
+                    let to = 1u64 << index;
+
+                    let move1 = Move::new(piece, to);
+                    moves.add(move1);
+
+                    knight_moves ^= to;
+                }
+
+                knights ^= piece;
+            }
+
+            // We generate the moves for the bishops
+            let mut bishops = self.array[$bishop];
+            while bishops != 0 {
+                let piece_index = bishops.trailing_zeros() as usize;
+                let piece = 1u64 << piece_index;
+
+                let mut bishop_moves = get_bishop_moves(piece, occupied) & !team & check_mask;
+
+                for i in 0..pin_count {
+                    if piece & pin_masks[i] != 0 {
+                        bishop_moves &= pin_masks[i];
+                    }
+                }
+                
+                while bishop_moves != 0 {
+                    let index = bishop_moves.trailing_zeros() as usize;
+                    let to = 1u64 << index;
+
+                    let move1 = Move::new(piece, to);
+                    moves.add(move1);
+
+                    bishop_moves ^= to;
+                }
+
+                bishops ^= piece;
+            }
+
+            // We generate the moves for the rooks
+            let mut rooks = self.array[$rook];
+            while rooks != 0 {
+                let piece_index = rooks.trailing_zeros() as usize;
+                let piece = 1u64 << piece_index;
+
+                let mut rook_moves = get_rook_moves(piece, occupied) & !team & check_mask;
+
+                for i in 0..pin_count {
+                    if piece & pin_masks[i] != 0 {
+                        rook_moves &= pin_masks[i];
+                    }
+                }
+
+                while rook_moves != 0 {
+                    let index = rook_moves.trailing_zeros() as usize;
+                    let to = 1u64 << index;
+
+                    let move1 = Move::new(piece, to);
+                    moves.add(move1);
+
+                    rook_moves ^= to;
+                }
+
+                rooks ^= piece;
+            }
+
+            // We generate the moves for the queens
+            let mut queens = self.array[$queen];
+            while queens != 0 {
+                let piece_index = queens.trailing_zeros() as usize;
+                let piece = 1u64 << piece_index;
+
+                let mut queen_moves = get_queen_moves(piece, occupied) & !team & check_mask;
+
+                for i in 0..pin_count {
+                    if piece & pin_masks[i] != 0 {
+                        queen_moves &= pin_masks[i];
+                    }
+                }
+
+                while queen_moves != 0 {
+                    let index = queen_moves.trailing_zeros() as usize;
+                    let to = 1u64 << index;
+
+                    let move1 = Move::new(piece, to);
+                    moves.add(move1);
+
+                    queen_moves ^= to;
+                }
+
+                queens ^= piece;
+            }
+
+            moves
+        }
+    };
+}
 
 #[derive(Debug, Clone)]
 pub struct Fen {
@@ -15,7 +617,7 @@ impl Fen {
     }
 
     pub fn from_str(fen_str: &str) -> Result<Self, String> {
-        let result = parsing::string_to_fen(fen_str);
+        let result = string_to_fen(fen_str);
 
         match result {
             Ok(array) => Ok(Self { array }),
@@ -24,12 +626,12 @@ impl Fen {
     }
 
     pub fn to_string(&self) -> String {
-        parsing::fen_to_string(self.array)
+        fen_to_string(self.array)
     }
 
     pub fn print_board(&self) {
 
-        let mut fen_str = parsing::fen_to_string(self.array);
+        let mut fen_str = fen_to_string(self.array);
         let split = fen_str.find(" ").unwrap();
         let info = fen_str.split_off(split);
 
@@ -100,8 +702,8 @@ impl Fen {
 
         let info = self.array[INFO];
 
-        let enpassant = parsing::info_to_enpassant(info);
-        let halfmove = parsing::info_to_halfmove(info);
+        let enpassant = info_to_enpassant(info);
+        let halfmove = info_to_halfmove(info);
 
         let new_enpassant: u64;
         let new_halfmove: u64;
@@ -138,7 +740,7 @@ impl Fen {
 
         // In case of capture or pawn movement, we increase halfmove, else we reset it
         if (to & all_pieces == 0) && (from & (self.array[PAWN_W] | self.array[PAWN_B]) == 0) {
-            new_halfmove = parsing::halfmove_to_info(halfmove + 1);
+            new_halfmove = halfmove_to_info(halfmove + 1);
         } else {
             new_halfmove = 0;
         }
@@ -191,9 +793,9 @@ impl Fen {
 
         let info = self.array[INFO];
 
-        let enpassant = parsing::info_to_enpassant(info);
-        let halfmove = parsing::info_to_halfmove(info);
-        let fullmove = parsing::info_to_fullmove(info);
+        let enpassant = info_to_enpassant(info);
+        let halfmove = info_to_halfmove(info);
+        let fullmove = info_to_fullmove(info);
 
         let new_enpassant: u64;
         let new_halfmove: u64;
@@ -211,7 +813,7 @@ impl Fen {
 
         // When black is to move, we increase the fullmove counter by one
         let new_turn = TURN_FLAG;
-        let new_fullmove = parsing::fullmove_to_info(fullmove + 1);
+        let new_fullmove = fullmove_to_info(fullmove + 1);
 
         // We update the castle information
         let king_moved = self.array[KING_B] & from != 0;
@@ -230,7 +832,7 @@ impl Fen {
 
         // In case of capture or pawn movement, we increase halfmove, else we reset it
         if (to & all_pieces == 0) && (from & (self.array[PAWN_W] | self.array[PAWN_B]) == 0) {
-            new_halfmove = parsing::halfmove_to_info(halfmove + 1);
+            new_halfmove = halfmove_to_info(halfmove + 1);
         } else {
             new_halfmove = 0;
         }
@@ -277,1082 +879,6 @@ impl Fen {
 
     }
 
-    fn get_pseudo_legal_moves_white(&self) -> Moves {
-
-        // For castling, we do not check if the squares between king and rook are attacked
-
-        let mut moves = Moves::empty();
-
-        let king = self.array[KING_W];
-        let info = self.array[INFO];
-
-        let opponents = get_black_pieces(&self.array);
-        let team = get_white_pieces(&self.array);
-        let occupied = opponents | team;
-
-        let mut king_moves = get_king_moves(king) & !team;
-        while king_moves != 0 {
-            let index = king_moves.trailing_zeros() as usize;
-            let to = 1u64 << index;
-            let move1 = Move::new(king, to);
-            moves.add(move1);
-
-            king_moves ^= to;
-        }
-
-        let kingside = info & WHITE_KINGSIDE_RIGHTS != 0;
-        let queenside = info & WHITE_QUEENSIDE_RIGHTS != 0;
-        let kingside_free = occupied & WHITE_KINGSIDE_SQUARES == 0;
-        let queenside_free = occupied & WHITE_QUEENSIDE_SQUARES == 0;
-
-        if kingside && kingside_free {
-            let move1 = Move::new(king, WHITE_KINGSIDE_MOVE_TO);
-            moves.add(move1);
-        }
-
-        if queenside && queenside_free {
-            let move1 = Move::new(king, WHITE_QUEENSIDE_MOVE_TO);
-            moves.add(move1);
-        }
-
-        let mut pawns = self.array[PAWN_W];
-        while pawns != 0 {
-            let pawn_index = pawns.trailing_zeros() as usize;
-            let pawn = 1u64 << pawn_index;
-
-            let pawn_attacks = get_white_pawn_attacks(pawn) & (opponents | info_to_enpassant(info));
-            let pawn_steps = get_white_pawn_steps(pawn, occupied);
-            let mut pawn_moves = pawn_attacks | pawn_steps;
-
-            let promotes = pawn & RANK_7 != 0;
-
-            while pawn_moves != 0 {
-                let index = pawn_moves.trailing_zeros() as usize;
-                let to = 1u64 << index;
-
-                if promotes {
-                    let move1 = Move::new_with_prom(pawn, to, Prom::Queen);
-                    let move2 = Move::new_with_prom(pawn, to, Prom::Bishop);
-                    let move3 = Move::new_with_prom(pawn, to, Prom::Knight);
-                    let move4 = Move::new_with_prom(pawn, to, Prom::Rook);
-
-                    moves.add(move1);
-                    moves.add(move2);
-                    moves.add(move3);
-                    moves.add(move4);
-
-                } else {
-                    let move1 = Move::new(pawn, to);
-                    moves.add(move1);
-                }
-
-                pawn_moves ^= to;
-            }
-
-            pawns ^= pawn;
-        }
-
-        let mut knights = self.array[KNIGHT_W];
-        while knights != 0 {
-            let piece_index = knights.trailing_zeros() as usize;
-            let piece = 1u64 << piece_index;
-
-            let mut knight_moves = get_knight_moves(piece) & !team;
-            while knight_moves != 0 {
-                let index = knight_moves.trailing_zeros() as usize;
-                let to = 1u64 << index;
-
-                let move1 = Move::new(piece, to);
-                moves.add(move1);
-
-                knight_moves ^= to;
-            }
-
-            knights ^= piece;
-        }
-
-        let mut bishops = self.array[BISHOP_W];
-        while bishops != 0 {
-            let piece_index = bishops.trailing_zeros() as usize;
-            let piece = 1u64 << piece_index;
-
-            let mut bishop_moves = get_bishop_moves(piece, occupied) & !team;
-            while bishop_moves != 0 {
-                let index = bishop_moves.trailing_zeros() as usize;
-                let to = 1u64 << index;
-
-                let move1 = Move::new(piece, to);
-                moves.add(move1);
-
-                bishop_moves ^= to;
-            }
-
-            bishops ^= piece;
-        }
-
-        let mut rooks = self.array[ROOK_W];
-        while rooks != 0 {
-            let piece_index = rooks.trailing_zeros() as usize;
-            let piece = 1u64 << piece_index;
-
-            let mut rook_moves = get_rook_moves(piece, occupied) & !team;
-            while rook_moves != 0 {
-                let index = rook_moves.trailing_zeros() as usize;
-                let to = 1u64 << index;
-
-                let move1 = Move::new(piece, to);
-                moves.add(move1);
-
-                rook_moves ^= to;
-            }
-
-            rooks ^= piece;
-        }
-
-        let mut queens = self.array[QUEEN_W];
-        while queens != 0 {
-            let piece_index = queens.trailing_zeros() as usize;
-            let piece = 1u64 << piece_index;
-
-            let mut queen_moves = get_queen_moves(piece, occupied) & !team;
-            while queen_moves != 0 {
-                let index = queen_moves.trailing_zeros() as usize;
-                let to = 1u64 << index;
-
-                let move1 = Move::new(piece, to);
-                moves.add(move1);
-
-                queen_moves ^= to;
-            }
-
-            queens ^= piece;
-        }
-
-        moves
-    }
-
-    fn get_pseudo_legal_moves_black(&self) -> Moves {
-
-        // For castling, we do not check if the squares between king and rook are attacked
-
-        let mut moves = Moves::empty();
-
-        let king = self.array[KING_B];
-        let info = self.array[INFO];
-
-        let opponents = get_white_pieces(&self.array);
-        let team = get_black_pieces(&self.array);
-        let occupied = opponents | team;
-
-        let mut king_moves = get_king_moves(king) & !team;
-        while king_moves != 0 {
-            let index = king_moves.trailing_zeros() as usize;
-            let to = 1u64 << index;
-            let move1 = Move::new(king, to);
-
-            moves.add(move1);
-
-            king_moves ^= to;
-        }
-
-        let kingside = info & BLACK_KINGSIDE_RIGHTS != 0;
-        let queenside = info & BLACK_QUEENSIDE_RIGHTS != 0;
-        let kingside_free = occupied & BLACK_KINGSIDE_SQUARES == 0;
-        let queenside_free = occupied & BLACK_QUEENSIDE_SQUARES == 0;
-
-        if kingside && kingside_free {
-            let move1 = Move::new(king, BLACK_KINGSIDE_MOVE_TO);
-            moves.add(move1);
-        }
-
-        if queenside && queenside_free {
-            let move1 = Move::new(king, BLACK_QUEENSIDE_MOVE_TO);
-            moves.add(move1);
-        }
-
-        let mut pawns = self.array[PAWN_B];
-        while pawns != 0 {
-            let pawn_index = pawns.trailing_zeros() as usize;
-            let pawn = 1u64 << pawn_index;
-
-            let pawn_attacks = get_black_pawn_attacks(pawn)  & (opponents | info_to_enpassant(info));
-            let pawn_steps = get_black_pawn_steps(pawn, occupied);
-            let mut pawn_moves = pawn_attacks | pawn_steps;
-
-            let promotes = pawn & RANK_2 != 0;
-
-            while pawn_moves != 0 {
-                let index = pawn_moves.trailing_zeros() as usize;
-                let to = 1u64 << index;
-
-                if promotes {
-                    let move1 = Move::new_with_prom(pawn, to, Prom::Queen);
-                    let move2 = Move::new_with_prom(pawn, to, Prom::Bishop);
-                    let move3 = Move::new_with_prom(pawn, to, Prom::Knight);
-                    let move4 = Move::new_with_prom(pawn, to, Prom::Rook);
-
-                    moves.add(move1);
-                    moves.add(move2);
-                    moves.add(move3);
-                    moves.add(move4);
-
-                } else {
-                    let move1 = Move::new(pawn, to);
-                    moves.add(move1);
-                }
-
-                pawn_moves ^= to;
-            }
-
-            pawns ^= pawn;
-        }
-
-        let mut knights = self.array[KNIGHT_B];
-        while knights != 0 {
-            let piece_index = knights.trailing_zeros() as usize;
-            let piece = 1u64 << piece_index;
-
-            let mut knight_moves = get_knight_moves(piece) & !team;
-            while knight_moves != 0 {
-                let index = knight_moves.trailing_zeros() as usize;
-                let to = 1u64 << index;
-
-                let move1 = Move::new(piece, to);
-                moves.add(move1);
-
-                knight_moves ^= to;
-            }
-
-            knights ^= piece;
-        }
-
-        let mut bishops = self.array[BISHOP_B];
-        while bishops != 0 {
-            let piece_index = bishops.trailing_zeros() as usize;
-            let piece = 1u64 << piece_index;
-
-            let mut bishop_moves = get_bishop_moves(piece, occupied) & !team;
-            while bishop_moves != 0 {
-                let index = bishop_moves.trailing_zeros() as usize;
-                let to = 1u64 << index;
-
-                let move1 = Move::new(piece, to);
-                moves.add(move1);
-
-                bishop_moves ^= to;
-            }
-
-            bishops ^= piece;
-        }
-
-        let mut rooks = self.array[ROOK_B];
-        while rooks != 0 {
-            let piece_index = rooks.trailing_zeros() as usize;
-            let piece = 1u64 << piece_index;
-
-            let mut rook_moves = get_rook_moves(piece, occupied) & !team;
-            while rook_moves != 0 {
-                let index = rook_moves.trailing_zeros() as usize;
-                let to = 1u64 << index;
-
-                let move1 = Move::new(piece, to);
-                moves.add(move1);
-
-                rook_moves ^= to;
-            }
-
-            rooks ^= piece;
-        }
-
-        let mut queens = self.array[QUEEN_B];
-        while queens != 0 {
-            let piece_index = queens.trailing_zeros() as usize;
-            let piece = 1u64 << piece_index;
-
-            let mut queen_moves = get_queen_moves(piece, occupied) & !team;
-            while queen_moves != 0 {
-                let index = queen_moves.trailing_zeros() as usize;
-                let to = 1u64 << index;
-
-                let move1 = Move::new(piece, to);
-                moves.add(move1);
-
-                queen_moves ^= to;
-            }
-
-            queens ^= piece;
-        }
-
-        moves
-    }
-
-    fn get_moves_white(&self) -> Moves {
-
-        /*
-        OPTIMISATIONS:
-
-        Switch get_ _moves functions to index based? (Or rather one function for index, one for square?)
-
-        Do we do pins in a while loop? Is there another option?
-
-        */
-
-        let mut moves = Moves::empty();
-
-        let team = get_white_pieces(&self.array);
-        let opps = get_black_pieces(&self.array);
-        let occupied = team | opps;
-
-        let king = self.array[KING_W];
-        let info = self.array[INFO];
-        let mut ep = info_to_enpassant(info);
-        let ep_piece = ep >> 8;
-
-        // The king cannot move to a square that has a team member
-        let mut king_moves = get_king_moves(king) & !team;
-
-        // We determine the positions of the pieces that check the king
-        // We use the sliding moves later to compute the check mask
-        // We see the queen as a rook or as a bishop whenever applicable
-
-        let knight_checks = get_knight_moves(king) & self.array[KNIGHT_B];
-        let pawn_checks = get_white_pawn_attacks(king) & self.array[PAWN_B];
-
-        let king_rook_moves = get_rook_moves(king, occupied);
-        let rook_checks = king_rook_moves & (self.array[ROOK_B] | self.array[QUEEN_B]);
-
-        let king_bishop_moves = get_bishop_moves(king, occupied);
-        let bishop_checks = king_bishop_moves & (self.array[BISHOP_B] | self.array[QUEEN_B]);
-
-        let checking_pieces = knight_checks | pawn_checks | rook_checks | bishop_checks;
-        let check_count: u32 = checking_pieces.count_ones();
-
-        // We add the king moves to the move list
-        let occupied_except_king = occupied & !king;
-        while king_moves != 0 {
-            let index = king_moves.trailing_zeros() as usize;
-            let to = 1u64 << index;
-
-            // We remove the king from the board, so that squares 'behind' the king are also checked, preventing backwards check evasion
-            if !self.is_square_attacked_white(to, occupied_except_king) {
-                let move1 = Move::new(king, to);
-                moves.add(move1);
-            }
-
-            king_moves ^= to;
-        }
-
-        // In case of two or more checks, only the king can move, so we return only those moves
-        if check_count > 1 { return moves }
-
-        // From now on, we can assume that at most one piece is attacking the king
-        // Do note that we have not added the castling moves at this point
-
-        // We compute the check_mask, which tells the pieces where they need to move to resolve check
-        // In case of a sliding check, it can be resolved by capturing the piece, or moving in between king and attacker
-        // In case of a non-sliding check, it can only be resolved by capturing the piece
-        // So, we start with checking_pieces, which has only one bit set, and add the 'in between' squares
-        // We can put *_checks into the get_*_moves function, since it can have at most one bit set
-        let mut check_mask = checking_pieces;
-
-        if rook_checks != 0 {
-            check_mask |= king_rook_moves & get_rook_moves(rook_checks, occupied)
-        } else if bishop_checks != 0 {
-            check_mask |= king_bishop_moves & get_bishop_moves(bishop_checks, occupied)
-        }
-
-        // We allow pawns to resolve checks by doing enpassant
-        let mut pawn_check_mask = check_mask;
-        if check_mask & self.array[PAWN_B] & ep_piece != 0 {
-            pawn_check_mask |= ep;
-        }
-
-        // We will & the mask with the piece movements, so in case there is no check, we want this to do nothing
-        if check_mask == 0 { check_mask = u64::MAX; pawn_check_mask = u64::MAX }
-
-        // We compute the pins, we DO NOT consider enpassant edge cases here
-        let mut pin_masks = [0u64; 8];
-        let mut pin_count: usize = 0;
-
-        // We only consider the opponents and the king as blockers
-        let pin_occupied = opps | king;
-
-        let king_rook_pins = get_rook_moves(king, pin_occupied);
-        let king_bishop_pins = get_bishop_moves(king, pin_occupied);
-
-        let mut rook_pins = king_rook_pins & (self.array[ROOK_B] | self.array[QUEEN_B]);
-        let mut bishop_pins = king_bishop_pins & (self.array[BISHOP_B] | self.array[QUEEN_B]);
-
-        // We check if there is exactly one team member between the king and an opponent rook or queen
-        // If so, we add this to the list of pin masks, to later check with the team members
-        while rook_pins != 0 {
-            let index = rook_pins.trailing_zeros();
-            let square = 1u64 << index;
-
-            let pin_mask = get_rook_moves(square, pin_occupied) & king_rook_pins;
-            if (pin_mask & team).count_ones() == 1 {
-                pin_masks[pin_count] = pin_mask | square;
-                pin_count += 1;
-            }
-
-            rook_pins ^= square
-        }
-
-        // We check if there is exactly one team member between the king and an opponent bishop or queen
-        // If so, we add this to the list of pin masks, to later check with the team members
-        while bishop_pins != 0 {
-            let index = bishop_pins.trailing_zeros();
-            let square = 1u64 << index;
-
-            let pin_mask = get_bishop_moves(square, pin_occupied) & king_bishop_pins;
-            if (pin_mask & team).count_ones() == 1 {
-                pin_masks[pin_count] = pin_mask | square;
-                pin_count += 1;
-            }
-
-            bishop_pins ^= square
-        }
-
-        // For castling, we assume that the king and rooks are in the correct positions if the rights are set
-        let kingside_rights = info & WHITE_KINGSIDE_RIGHTS != 0;
-        let queenside_rights = info & WHITE_QUEENSIDE_RIGHTS != 0;
-
-        let kingside_free = occupied & WHITE_KINGSIDE_SQUARES == 0;
-        let queenside_free = occupied & WHITE_QUEENSIDE_SQUARES == 0;
-
-        // We check if castling kingside is allowed and if there are no pieces in between
-        if check_count == 0 && kingside_rights && kingside_free {
-
-            // Checking if squares are under attack is relatively expensive
-            if !self.is_square_attacked_white(WHITE_KINGSIDE_ATTACK_1, occupied) {
-                if !self.is_square_attacked_white(WHITE_KINGSIDE_ATTACK_2, occupied) {
-
-                    // In case the squares are free and not under attack, we allow castling
-                    let move1 = Move::new(king, WHITE_KINGSIDE_MOVE_TO);
-                    moves.add(move1);
-                }
-            }
-        }
-
-        // We check if castling queenside is allowed and if there are no pieces in between
-        if check_count == 0 && queenside_rights && queenside_free {
-
-            // Checking if squares are under attack is relatively expensive
-            // Checking if squares are under attack is relatively expensive
-            if !self.is_square_attacked_white(WHITE_QUEENSIDE_ATTACK_1, occupied) {
-                if !self.is_square_attacked_white(WHITE_QUEENSIDE_ATTACK_2, occupied) {
-
-                    // In case the squares are free and not under attack, we allow castling
-                    let move1 = Move::new(king, WHITE_QUEENSIDE_MOVE_TO);
-                    moves.add(move1);
-                }
-            }
-        }
-
-        // We are now ready to generate moves for the other pieces
-        // We start with the pawns, since their behavior is the most complicated
-        // First, we have to determine whether we can enpassant or not
-
-        // The following is to prevent the enpassant edge cases:
-        //      (1) Pin by two pieces, e.g. 8/8/8/KpP4r/8/8/8/7k w - b6 0 13
-        //      (2) Pin by opponent, e.g. 8/8/K7/1pP5/8/8/4b3/7k w - b6 0 1
-        // We prevent these by setting ep = EMPTY if they occur
-        // We start with some checks that fail almost all of the time
-        if ep != 0 {
-
-            // Case (1): For this case to occur the king must be on the fifth rank
-            if king & RANK_5 != 0 {
-                let ep_attacker = get_black_pawn_attacks(ep) & self.array[PAWN_W];
-
-                // If there is zero or two pawns that can take the enpassant, this case does not occur
-                if ep_attacker.count_ones() == 1 {
-
-                    // We compute the king moves, ignoring the two pieces, to check if there is a rook or a queen
-                    let ep_occupied = occupied & !(ep_attacker | ep_piece);
-                    let ep_pin_king_moves = get_rook_moves(king, ep_occupied) & RANK_5;
-                    let ep_pin_attacker = ep_pin_king_moves & (self.array[ROOK_B] | self.array[QUEEN_B]);
-
-                    // If there is zero attackers, this case does not occur
-                    // If there is two attackers, the king must be in check, so enpassant would not be allowed anyway
-                    if ep_pin_attacker.count_ones() == 1 {
-
-                        // We compute the squares between the king and the attacker
-                        // If there are two pieces in this mask, these must be the two pieces, so we prevent enpassant
-                        let ep_mask = get_rook_moves(ep_pin_attacker, ep_occupied) & ep_pin_king_moves;
-                        if (ep_mask & occupied).count_ones() == 2 {
-                            ep = EMPTY;
-                        }
-                    }
-                }
-
-            // Case (2)
-            } else {
-
-                let ep_index = ep_piece.trailing_zeros() as usize;
-                let ep_diag = BISHOP_MOVES[ep_index] | ep_piece;
-
-                // For this case to occur the king must be on the same diagonal as the enpassant piece
-                if king & ep_diag != 0 {
-
-                    let ep_attacker = get_black_pawn_attacks(ep) & self.array[PAWN_W];
-
-                    // If there is no piece that can take the enpassant, this case cannot occur.
-                    if ep_attacker.count_ones() != 0 {
-
-                        let ep_occupied = occupied & !ep_piece;
-                        let ep_pin_king_moves = get_bishop_moves(king, ep_occupied) & ep_diag;
-                        let ep_pin_attacker = ep_pin_king_moves & (self.array[BISHOP_B] | self.array[QUEEN_B]);
-
-                        // If there is zero attackers, this case does not occur
-                        // If there is two attackers, the king must be in check, so enpassant would not be allowed anyway
-                        if ep_pin_attacker.count_ones() == 1 {
-
-                            // We compute the squares between the king and the attacker
-                            // If there is one piece in this mask, this must be the enpassant piece, so we prevent enpassant
-                            let ep_mask = get_bishop_moves(ep_pin_attacker, ep_occupied) & ep_pin_king_moves;
-                            if (ep_mask & occupied).count_ones() == 1 {
-                                ep = EMPTY;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // We generate the moves for the pawns
-        let mut pawns = self.array[PAWN_W];
-        while pawns != 0 {
-            let pawn_index = pawns.trailing_zeros() as usize;
-            let pawn = 1u64 << pawn_index;
-
-            let pawn_attacks = get_white_pawn_attacks(pawn) & (opps | ep);
-            let pawn_steps = get_white_pawn_steps(pawn, occupied);
-            let mut pawn_moves = (pawn_attacks | pawn_steps) & pawn_check_mask;
-
-            for i in 0..pin_count {
-                if pawn & pin_masks[i] != 0 {
-                    pawn_moves &= pin_masks[i];
-                }
-            }
-
-            let promotes = pawn & RANK_7 != 0;
-
-            while pawn_moves != 0 {
-                let index = pawn_moves.trailing_zeros() as usize;
-                let to = 1u64 << index;
-
-                if promotes {
-                    let move1 = Move::new_with_prom(pawn, to, Prom::Queen);
-                    let move2 = Move::new_with_prom(pawn, to, Prom::Bishop);
-                    let move3 = Move::new_with_prom(pawn, to, Prom::Knight);
-                    let move4 = Move::new_with_prom(pawn, to, Prom::Rook);
-
-                    moves.add(move1);
-                    moves.add(move2);
-                    moves.add(move3);
-                    moves.add(move4);
-
-                } else {
-                    let move1 = Move::new(pawn, to);
-                    moves.add(move1);
-                }
-
-                pawn_moves ^= to;
-            }
-
-            pawns ^= pawn;
-        }
-
-        // We generate the moves for the knights
-        let mut knights = self.array[KNIGHT_W];
-        while knights != 0 {
-            let piece_index = knights.trailing_zeros() as usize;
-            let piece = 1u64 << piece_index;
-
-            let mut knight_moves = get_knight_moves(piece) & !team & check_mask;
-
-            for i in 0..pin_count {
-                if piece & pin_masks[i] != 0 {
-                    knight_moves &= pin_masks[i];
-                }
-            }
-
-            while knight_moves != 0 {
-                let index = knight_moves.trailing_zeros() as usize;
-                let to = 1u64 << index;
-
-                let move1 = Move::new(piece, to);
-                moves.add(move1);
-
-                knight_moves ^= to;
-            }
-
-            knights ^= piece;
-        }
-
-        // We generate the moves for the bishops
-        let mut bishops = self.array[BISHOP_W];
-        while bishops != 0 {
-            let piece_index = bishops.trailing_zeros() as usize;
-            let piece = 1u64 << piece_index;
-
-            let mut bishop_moves = get_bishop_moves(piece, occupied) & !team & check_mask;
-
-            for i in 0..pin_count {
-                if piece & pin_masks[i] != 0 {
-                    bishop_moves &= pin_masks[i];
-                }
-            }
-            
-            while bishop_moves != 0 {
-                let index = bishop_moves.trailing_zeros() as usize;
-                let to = 1u64 << index;
-
-                let move1 = Move::new(piece, to);
-                moves.add(move1);
-
-                bishop_moves ^= to;
-            }
-
-            bishops ^= piece;
-        }
-
-        // We generate the moves for the rooks
-        let mut rooks = self.array[ROOK_W];
-        while rooks != 0 {
-            let piece_index = rooks.trailing_zeros() as usize;
-            let piece = 1u64 << piece_index;
-
-            let mut rook_moves = get_rook_moves(piece, occupied) & !team & check_mask;
-
-            for i in 0..pin_count {
-                if piece & pin_masks[i] != 0 {
-                    rook_moves &= pin_masks[i];
-                }
-            }
-
-            while rook_moves != 0 {
-                let index = rook_moves.trailing_zeros() as usize;
-                let to = 1u64 << index;
-
-                let move1 = Move::new(piece, to);
-                moves.add(move1);
-
-                rook_moves ^= to;
-            }
-
-            rooks ^= piece;
-        }
-
-        // We generate the moves for the queens
-        let mut queens = self.array[QUEEN_W];
-        while queens != 0 {
-            let piece_index = queens.trailing_zeros() as usize;
-            let piece = 1u64 << piece_index;
-
-            let mut queen_moves = get_queen_moves(piece, occupied) & !team & check_mask;
-
-            for i in 0..pin_count {
-                if piece & pin_masks[i] != 0 {
-                    queen_moves &= pin_masks[i];
-                }
-            }
-
-            while queen_moves != 0 {
-                let index = queen_moves.trailing_zeros() as usize;
-                let to = 1u64 << index;
-
-                let move1 = Move::new(piece, to);
-                moves.add(move1);
-
-                queen_moves ^= to;
-            }
-
-            queens ^= piece;
-        }
-
-        moves
-    }
-
-    fn get_moves_black(&self) -> Moves {
-
-        let mut moves = Moves::empty();
-
-        let team = get_black_pieces(&self.array);
-        let opps = get_white_pieces(&self.array);
-        let occupied = team | opps;
-
-        let king = self.array[KING_B];
-        let info = self.array[INFO];
-        let mut ep = info_to_enpassant(info);
-
-        // The king cannot move to a square that has a team member
-        let mut king_moves = get_king_moves(king) & !team;
-
-        // We determine the positions of the pieces that check the king
-        // We use the sliding moves later to compute the check mask
-        // We see the queen as a rook or as a bishop whenever applicable
-
-        let knight_checks = get_knight_moves(king) & self.array[KNIGHT_W];
-        let pawn_checks = get_black_pawn_attacks(king) & self.array[PAWN_W];
-
-        let king_rook_moves = get_rook_moves(king, occupied);
-        let rook_checks = king_rook_moves & (self.array[ROOK_W] | self.array[QUEEN_W]);
-
-        let king_bishop_moves = get_bishop_moves(king, occupied);
-        let bishop_checks = king_bishop_moves & (self.array[BISHOP_W] | self.array[QUEEN_W]);
-
-        let checking_pieces = knight_checks | pawn_checks | rook_checks | bishop_checks;
-        let check_count: u32 = checking_pieces.count_ones();
-
-        // We add the king moves to the move list
-        let occupied_except_king = occupied & !king;
-        while king_moves != 0 {
-            let index = king_moves.trailing_zeros() as usize;
-            let to = 1u64 << index;
-
-            // We remove the king from the board, so that squares 'behind' the king are also checked, preventing backwards check evasion
-            if !self.is_square_attacked_black(to, occupied_except_king) {
-                let move1 = Move::new(king, to);
-                moves.add(move1);
-            }
-
-            king_moves ^= to;
-        }
-
-        // In case of two or more checks, only the king can move, so we return only those moves
-        if check_count > 1 { return moves }
-
-        // From now on, we can assume that at most one piece is attacking the king
-        // Do note that we have not added the castling moves at this point
-
-        // We compute the check_mask, which tells the pieces where they need to move to resolve check
-        // In case of a sliding check, it can be resolved by capturing the piece, or moving in between king and attacker
-        // In case of a non-sliding check, it can only be resolved by capturing the piece
-        // So, we start with checking_pieces, which has only one bit set, and add the 'in between' squares
-        // We can put *_checks into the get_*_moves function, since it can have at most one bit set
-        let mut check_mask = checking_pieces;
-
-        if rook_checks != 0 {
-            check_mask |= king_rook_moves & get_rook_moves(rook_checks, occupied)
-        } else if bishop_checks != 0 {
-            check_mask |= king_bishop_moves & get_bishop_moves(bishop_checks, occupied)
-        }
-
-        // We allow pawns to resolve checks by doing enpassant
-        let mut pawn_check_mask = check_mask;
-        if check_mask & self.array[PAWN_W] & (ep << 8) != 0 {
-            pawn_check_mask |= ep;
-        }
-
-        // We will & the mask with the piece movements, so in case there is no check, we want this to do nothing
-        if check_mask == 0 { check_mask = u64::MAX; pawn_check_mask = u64::MAX }
-
-        // We compute the pins, we DO NOT consider enpassant edge cases here
-        let mut pin_masks = [0u64; 8];
-        let mut pin_count: usize = 0;
-
-        // We only consider the opponents and the king as blockers
-        let pin_occupied = opps | king;
-
-        let king_rook_pins = get_rook_moves(king, pin_occupied);
-        let king_bishop_pins = get_bishop_moves(king, pin_occupied);
-
-        let mut rook_pins = king_rook_pins & (self.array[ROOK_W] | self.array[QUEEN_W]);
-        let mut bishop_pins = king_bishop_pins & (self.array[BISHOP_W] | self.array[QUEEN_W]);
-
-        // We check if there is exactly one team member between the king and an opponent rook or queen
-        // If so, we add this to the list of pin masks, to later check with the team members
-        while rook_pins != 0 {
-            let index = rook_pins.trailing_zeros();
-            let square = 1u64 << index;
-
-            let pin_mask = get_rook_moves(square, pin_occupied) & king_rook_pins;
-            if (pin_mask & team).count_ones() == 1 {
-                pin_masks[pin_count] = pin_mask | square;
-                pin_count += 1;
-            }
-
-            rook_pins ^= square
-        }
-
-        // We check if there is exactly one team member between the king and an opponent bishop or queen
-        // If so, we add this to the list of pin masks, to later check with the team members
-        while bishop_pins != 0 {
-            let index = bishop_pins.trailing_zeros();
-            let square = 1u64 << index;
-
-            let pin_mask = get_bishop_moves(square, pin_occupied) & king_bishop_pins;
-            if (pin_mask & team).count_ones() == 1 {
-                pin_masks[pin_count] = pin_mask | square;
-                pin_count += 1;
-            }
-
-            bishop_pins ^= square
-        }
-
-        // For castling, we assume that the king and rooks are in the correct positions if the rights are set
-        let kingside_rights = info & BLACK_KINGSIDE_RIGHTS != 0;
-        let queenside_rights = info & BLACK_QUEENSIDE_RIGHTS != 0;
-
-        let kingside_free = occupied & BLACK_KINGSIDE_SQUARES == 0;
-        let queenside_free = occupied & BLACK_QUEENSIDE_SQUARES == 0;
-
-        // We check if castling kingside is allowed and if there are no pieces in between
-        if  check_count == 0 && kingside_rights && kingside_free {
-
-            // Checking if squares are under attack is relatively expensive
-            if !self.is_square_attacked_black(BLACK_KINGSIDE_ATTACK_1, occupied) {
-                if !self.is_square_attacked_black(BLACK_KINGSIDE_ATTACK_2, occupied) {
-
-                    // In case the squares are free and not under attack, we allow castling
-                    let move1 = Move::new(king, BLACK_KINGSIDE_MOVE_TO);
-                    moves.add(move1);
-                }
-            }
-        }
-
-        // We check if castling queenside is allowed and if there are no pieces in between
-        if  check_count == 0 && queenside_rights && queenside_free {
-
-            // Checking if squares are under attack is relatively expensive
-            // Checking if squares are under attack is relatively expensive
-            if !self.is_square_attacked_black(BLACK_QUEENSIDE_ATTACK_1, occupied) {
-                if !self.is_square_attacked_black(BLACK_QUEENSIDE_ATTACK_2, occupied) {
-
-                    // In case the squares are free and not under attack, we allow castling
-                    let move1 = Move::new(king, BLACK_QUEENSIDE_MOVE_TO);
-                    moves.add(move1);
-                }
-            }
-        }
-
-        // We are now ready to generate moves for the other pieces
-        // We start with the pawns, since their behavior is the most complicated
-        // First, we have to determine whether we can enpassant or not
-
-        // The following is to prevent the enpassant edge cases:
-        //      (1) Pin by two pieces, e.g. 8/8/8/KpP4r/8/8/8/7k w - b6 0 13
-        //      (2) Pin by opponent, e.g. 8/8/K7/1pP5/8/8/4b3/7k w - b6 0 1
-        // We prevent these by setting ep = EMPTY if they occur
-        // We start with some checks that fail almost all of the time
-        if ep != 0 {
-
-            // Case (1): For this case to occur the king must be on the fourth rank
-            if king & RANK_4 != 0 {
-                let ep_attacker = get_white_pawn_attacks(ep) & self.array[PAWN_B];
-
-                // If there is zero or two pawns that can take the enpassant, this case does not occur
-                if ep_attacker.count_ones() == 1 {
-
-                    // We compute the king moves, ignoring the two pieces, to check if there is a rook or a queen
-                    let ep_occupied = occupied & !(ep_attacker | (ep << 8));
-                    let ep_pin_king_moves = get_rook_moves(king, ep_occupied) & RANK_4;
-                    let ep_pin_attacker = ep_pin_king_moves & (self.array[ROOK_W] | self.array[QUEEN_W]);
-
-                    // If there is zero attackers, this case does not occur
-                    // If there is two attackers, the king must be in check, so enpassant would not be allowed anyway
-                    if ep_pin_attacker.count_ones() == 1 {
-
-                        // We compute the squares between the king and the attacker
-                        // If there are two pieces in this mask, these must be the two pieces, so we prevent enpassant
-                        let ep_mask = get_rook_moves(ep_pin_attacker, ep_occupied) & ep_pin_king_moves;
-                        if (ep_mask & occupied).count_ones() == 2 {
-                            ep = EMPTY;
-                        }
-                    }
-                }
-
-            // Case (2)
-            } else {
-
-                let ep_piece = ep << 8;
-                let ep_index = ep_piece.trailing_zeros() as usize;
-                let ep_diag = BISHOP_MOVES[ep_index];
-
-                // For this case to occur the king must be on the same diagonal as the enpassant piece
-                if king & ep_diag != 0 {
-
-                    let ep_attacker = get_white_pawn_attacks(ep) & self.array[PAWN_B];
-
-                    // If there is no piece that can take the enpassant, this case cannot occur.
-                    if ep_attacker.count_ones() != 0 {
-
-                        let ep_occupied = occupied & !ep_piece;
-                        let ep_pin_king_moves = get_bishop_moves(king, ep_occupied) & ep_diag;
-                        let ep_pin_attacker = ep_pin_king_moves & (self.array[BISHOP_W] | self.array[QUEEN_W]);
-
-                        // If there is zero attackers, this case does not occur
-                        // If there is two attackers, the king must be in check, so enpassant would not be allowed anyway
-                        if ep_pin_attacker.count_ones() == 1 {
-
-                            // We compute the squares between the king and the attacker
-                            // If there is one piece in this mask, this must be the enpassant piece, so we prevent enpassant
-                            let ep_mask = get_bishop_moves(ep_pin_attacker, ep_occupied) & ep_pin_king_moves;
-                            if (ep_mask & occupied).count_ones() == 1 {
-                                ep = EMPTY;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // We generate the moves for the pawns
-        let mut pawns = self.array[PAWN_B];
-        while pawns != 0 {
-            let pawn_index = pawns.trailing_zeros() as usize;
-            let pawn = 1u64 << pawn_index;
-
-            let pawn_attacks = get_black_pawn_attacks(pawn) & (opps | ep);
-            let pawn_steps = get_black_pawn_steps(pawn, occupied);
-            let mut pawn_moves = (pawn_attacks | pawn_steps) & pawn_check_mask;
-
-            for i in 0..pin_count {
-                if pawn & pin_masks[i] != 0 {
-                    pawn_moves &= pin_masks[i];
-                }
-            }
-
-            let promotes = pawn & RANK_2 != 0;
-
-            while pawn_moves != 0 {
-                let index = pawn_moves.trailing_zeros() as usize;
-                let to = 1u64 << index;
-
-                if promotes {
-                    let move1 = Move::new_with_prom(pawn, to, Prom::Queen);
-                    let move2 = Move::new_with_prom(pawn, to, Prom::Bishop);
-                    let move3 = Move::new_with_prom(pawn, to, Prom::Knight);
-                    let move4 = Move::new_with_prom(pawn, to, Prom::Rook);
-
-                    moves.add(move1);
-                    moves.add(move2);
-                    moves.add(move3);
-                    moves.add(move4);
-
-                } else {
-                    let move1 = Move::new(pawn, to);
-                    moves.add(move1);
-                }
-
-                pawn_moves ^= to;
-            }
-
-            pawns ^= pawn;
-        }
-
-        // We generate the moves for the knights
-        let mut knights = self.array[KNIGHT_B];
-        while knights != 0 {
-            let piece_index = knights.trailing_zeros() as usize;
-            let piece = 1u64 << piece_index;
-
-            let mut knight_moves = get_knight_moves(piece) & !team & check_mask;
-
-            for i in 0..pin_count {
-                if piece & pin_masks[i] != 0 {
-                    knight_moves &= pin_masks[i];
-                }
-            }
-
-            while knight_moves != 0 {
-                let index = knight_moves.trailing_zeros() as usize;
-                let to = 1u64 << index;
-
-                let move1 = Move::new(piece, to);
-                moves.add(move1);
-
-                knight_moves ^= to;
-            }
-
-            knights ^= piece;
-        }
-
-        // We generate the moves for the bishops
-        let mut bishops = self.array[BISHOP_B];
-        while bishops != 0 {
-            let piece_index = bishops.trailing_zeros() as usize;
-            let piece = 1u64 << piece_index;
-
-            let mut bishop_moves = get_bishop_moves(piece, occupied) & !team & check_mask;
-
-            for i in 0..pin_count {
-                if piece & pin_masks[i] != 0 {
-                    bishop_moves &= pin_masks[i];
-                }
-            }
-            
-            while bishop_moves != 0 {
-                let index = bishop_moves.trailing_zeros() as usize;
-                let to = 1u64 << index;
-
-                let move1 = Move::new(piece, to);
-                moves.add(move1);
-
-                bishop_moves ^= to;
-            }
-
-            bishops ^= piece;
-        }
-
-        // We generate the moves for the rooks
-        let mut rooks = self.array[ROOK_B];
-        while rooks != 0 {
-            let piece_index = rooks.trailing_zeros() as usize;
-            let piece = 1u64 << piece_index;
-
-            let mut rook_moves = get_rook_moves(piece, occupied) & !team & check_mask;
-
-            for i in 0..pin_count {
-                if piece & pin_masks[i] != 0 {
-                    rook_moves &= pin_masks[i];
-                }
-            }
-
-            while rook_moves != 0 {
-                let index = rook_moves.trailing_zeros() as usize;
-                let to = 1u64 << index;
-
-                let move1 = Move::new(piece, to);
-                moves.add(move1);
-
-                rook_moves ^= to;
-            }
-
-            rooks ^= piece;
-        }
-
-        // We generate the moves for the queens
-        let mut queens = self.array[QUEEN_B];
-        while queens != 0 {
-            let piece_index = queens.trailing_zeros() as usize;
-            let piece = 1u64 << piece_index;
-
-            let mut queen_moves = get_queen_moves(piece, occupied) & !team & check_mask;
-
-            for i in 0..pin_count {
-                if piece & pin_masks[i] != 0 {
-                    queen_moves &= pin_masks[i];
-                }
-            }
-
-            while queen_moves != 0 {
-                let index = queen_moves.trailing_zeros() as usize;
-                let to = 1u64 << index;
-
-                let move1 = Move::new(piece, to);
-                moves.add(move1);
-
-                queen_moves ^= to;
-            }
-
-            queens ^= piece;
-        }
-
-        moves
-    }
-
     #[inline(always)]
     fn is_square_attacked_white(&self, square: u64, occupied: u64) -> bool {
         // We let the square make the moves of each piece, to see if there is a piece that is attacking the square.
@@ -1382,4 +908,136 @@ impl Fen {
 
         knight_attacks | pawn_attacks | king_attacks | rook_or_queen_attacks | bishop_or_queen_attacks != 0
     }
+
+    gen_pseudo_legal!(
+        get_pseudo_legal_moves_white,
+
+        KING_W,
+        PAWN_W,
+        KNIGHT_W,
+        BISHOP_W,
+        ROOK_W,
+        QUEEN_W,
+
+        get_white_pieces,
+        get_black_pieces,
+
+        WHITE_KINGSIDE_RIGHTS,
+        WHITE_QUEENSIDE_RIGHTS,
+        WHITE_KINGSIDE_SQUARES,
+        WHITE_QUEENSIDE_SQUARES,
+        WHITE_KINGSIDE_MOVE_TO,
+        WHITE_QUEENSIDE_MOVE_TO,
+
+        get_white_pawn_attacks,
+        get_white_pawn_steps,
+        RANK_7,
+    );
+
+    gen_pseudo_legal!(
+        get_pseudo_legal_moves_black,
+
+        KING_B,
+        PAWN_B,
+        KNIGHT_B,
+        BISHOP_B,
+        ROOK_B,
+        QUEEN_B,
+
+        get_black_pieces,
+        get_white_pieces,
+
+        BLACK_KINGSIDE_RIGHTS,
+        BLACK_QUEENSIDE_RIGHTS,
+        BLACK_KINGSIDE_SQUARES,
+        BLACK_QUEENSIDE_SQUARES,
+        BLACK_KINGSIDE_MOVE_TO,
+        BLACK_QUEENSIDE_MOVE_TO,
+
+        get_black_pawn_attacks,
+        get_black_pawn_steps,
+        RANK_2,
+    );
+
+    gen_legal!(
+        get_moves_white,
+
+        KING_W,
+        PAWN_W,
+        KNIGHT_W,
+        BISHOP_W,
+        ROOK_W,
+        QUEEN_W,
+
+        PAWN_B,
+        KNIGHT_B,
+        BISHOP_B,
+        ROOK_B,
+        QUEEN_B,
+
+        get_white_pieces,
+        get_black_pieces,
+
+        WHITE_KINGSIDE_RIGHTS,
+        WHITE_QUEENSIDE_RIGHTS,
+        WHITE_KINGSIDE_SQUARES,
+        WHITE_QUEENSIDE_SQUARES,
+        WHITE_KINGSIDE_MOVE_TO,
+        WHITE_QUEENSIDE_MOVE_TO,
+        WHITE_KINGSIDE_ATTACK_1,
+        WHITE_KINGSIDE_ATTACK_2,
+        WHITE_QUEENSIDE_ATTACK_1,
+        WHITE_QUEENSIDE_ATTACK_2,
+
+        get_white_pawn_attacks,
+        get_white_pawn_steps,
+        RANK_7,
+
+        get_black_pawn_attacks,
+        RANK_5,
+        rank_down,
+
+        is_square_attacked_white,
+    );
+
+    gen_legal!(
+        get_moves_black,
+
+        KING_B,
+        PAWN_B,
+        KNIGHT_B,
+        BISHOP_B,
+        ROOK_B,
+        QUEEN_B,
+
+        PAWN_W,
+        KNIGHT_W,
+        BISHOP_W,
+        ROOK_W,
+        QUEEN_W,
+
+        get_black_pieces,
+        get_white_pieces,
+
+        BLACK_KINGSIDE_RIGHTS,
+        BLACK_QUEENSIDE_RIGHTS,
+        BLACK_KINGSIDE_SQUARES,
+        BLACK_QUEENSIDE_SQUARES,
+        BLACK_KINGSIDE_MOVE_TO,
+        BLACK_QUEENSIDE_MOVE_TO,
+        BLACK_KINGSIDE_ATTACK_1,
+        BLACK_KINGSIDE_ATTACK_2,
+        BLACK_QUEENSIDE_ATTACK_1,
+        BLACK_QUEENSIDE_ATTACK_2,
+
+        get_black_pawn_attacks,
+        get_black_pawn_steps,
+        RANK_2,
+
+        get_white_pawn_attacks,
+        RANK_4,
+        rank_up,
+
+        is_square_attacked_black,
+    );
 }
