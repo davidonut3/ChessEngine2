@@ -30,17 +30,17 @@ impl Prom {
 pub struct Move { pub move1: u16 }
 
 impl Move {
-    pub fn new(from: u64, to: u64) -> Self {
-        let from_move: u16 = from.trailing_zeros() as u16;
-        let to_move: u16 = (to.trailing_zeros() << 6) as u16;
-        let move1 = from_move | to_move;
+    pub fn new(from_index: usize, to_index: usize) -> Self {
+        let from: u16 = from_index as u16;
+        let to: u16 = (to_index << 6) as u16;
+        let move1 = from | to;
 
         Self { move1 }
     }
 
-    pub fn new_with_prom(from: u64, to: u64, prom: Prom) -> Self {
-        let from_move: u16 = from.trailing_zeros() as u16;
-        let to_move: u16 = (to.trailing_zeros() << 6) as u16;
+    pub fn new_with_prom(from_index: usize, to_index: usize, prom: Prom) -> Self {
+        let from: u16 = from_index as u16;
+        let to: u16 = (to_index << 6) as u16;
         
         let prom_move: u16 = match prom {
             Prom::Queen => 1u16 << 12,
@@ -50,7 +50,7 @@ impl Move {
             Prom::NoProm => 0,
         };
 
-        let move1 = from_move | to_move | prom_move;
+        let move1 = from | to | prom_move;
 
         Self { move1 }
     }
@@ -94,7 +94,7 @@ impl Move {
         let from = lan_to_bitboard(from_square);
         let to = lan_to_bitboard(to_square);
 
-        if lan.len() == 4 { return Ok(Self::new(from, to)) }
+        if lan.len() == 4 { return Ok(Self::new(from.trailing_zeros() as usize, to.trailing_zeros() as usize)) }
 
         let allowed_proms = ["q", "b", "n", "r"];
         let prom_str = &lower_lan[4..5];
@@ -103,7 +103,7 @@ impl Move {
 
         let prom = Prom::from_str(prom_str);
 
-        Ok(Self::new_with_prom(from, to, prom))
+        Ok(Self::new_with_prom(from.trailing_zeros() as usize, to.trailing_zeros() as usize, prom))
     }
 
     pub fn to_string(&self) -> String {

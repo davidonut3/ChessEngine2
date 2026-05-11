@@ -133,7 +133,6 @@ fn main() {
             let result = perft(depth, &new_fen);
             println!("{}", result.to_string())
 
-
         }
 
         if user_input.find("compare") == Some(0) {
@@ -178,31 +177,40 @@ fn main() {
         }
 
         if user_input.find("speed") == Some(0) {
-            let split: Vec<&str> = user_input.trim().split_whitespace().collect();
-            if split.len() > 2 {
-                println!("Error: Speed requires at most 1 argument");
+            let perft_str: Vec<&str> = user_input.trim().split_whitespace().collect();
+            if perft_str.len() != 2 && perft_str.len() != 3 {
+                println!("Error: Speed requires 1 or 2 arguments");
                 continue
             }
 
-            if split.len() == 1 {
-                moves_per_second();
-                continue
-            }
+            let depth_index = perft_str.len() - 1;
+            let depth_result: Result<usize, ParseIntError> = perft_str[depth_index].parse();
 
-            let count_result: Result<usize, ParseIntError> = split[1].parse();
-
-            if count_result.is_err() {
+            if depth_result.is_err() {
                 println!("Error: Depth must be a positive integer");
                 continue
             }
 
-            let count = count_result.unwrap();
-            if count < 1 {
+            let depth = depth_result.unwrap();
+            if depth < 1 {
                 println!("Error: Depth must be greater than 0");
                 continue
             }
 
-            move_gen_perft(count)
+            let new_fen: Fen;
+            if perft_str.len() == 2 {
+                new_fen = fen.clone()
+            } else {
+                let result = Fen::from_str(perft_str[1]);
+
+                match result {
+                    Ok(ok_fen) => { new_fen = ok_fen },
+                    Err(error) => { println!("{}", error); continue }
+                }
+            }
+
+            moves_per_second(depth, &new_fen);
+
         }
 
         if user_input == "string" { println!("{}", fen.to_string()) }

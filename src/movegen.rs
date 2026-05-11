@@ -692,19 +692,9 @@ pub const BLACK_PAWN_ATTACKS: BitboardTable = [
 ];
 
 #[inline(always)]
-pub fn get_white_pawn_attacks(square: u64) -> u64 {
-    let index = square.trailing_zeros() as usize;
-    WHITE_PAWN_ATTACKS[index]
-}
+pub fn get_white_pawn_steps(index: usize, occupied: u64) -> u64 {
+    let square = 1u64 << index;
 
-#[inline(always)]
-pub fn get_black_pawn_attacks(square: u64) -> u64 {
-    let index = square.trailing_zeros() as usize;
-    BLACK_PAWN_ATTACKS[index]
-}
-
-#[inline(always)]
-pub fn get_white_pawn_steps(square: u64, occupied: u64) -> u64 {
     let one_step = square << 8 & !occupied;
     let two_step = ((one_step & RANK_3) << 8) & !occupied;
 
@@ -712,7 +702,9 @@ pub fn get_white_pawn_steps(square: u64, occupied: u64) -> u64 {
 }
 
 #[inline(always)]
-pub fn get_black_pawn_steps(square: u64, occupied: u64) -> u64 {
+pub fn get_black_pawn_steps(index: usize, occupied: u64) -> u64 {
+    let square = 1u64 << index;
+
     let one_step = square >> 8 & !occupied;
     let two_step = ((one_step & RANK_6) >> 8) & !occupied;
 
@@ -720,94 +712,84 @@ pub fn get_black_pawn_steps(square: u64, occupied: u64) -> u64 {
 }
 
 #[inline(always)]
-pub fn get_knight_moves(square: u64) -> u64 {
-    let index = square.trailing_zeros() as usize;
-    KNIGHT_MOVES[index]
+pub fn white_pawn_promotion(index: usize) -> bool {
+    return index >= 48 && index < 56
 }
 
 #[inline(always)]
-pub fn get_king_moves(square: u64) -> u64 {
-    let index = square.trailing_zeros() as usize;
-    KING_MOVES[index]
-}
-
-#[inline(always)]
-#[cfg(target_feature = "bmi2")]
-pub fn get_rook_moves(square: u64, occupied: u64) -> u64 {
-    get_pext_rook_moves(square, occupied)
-}
-
-#[inline(always)]
-#[cfg(not(target_feature = "bmi2"))]
-pub fn get_rook_moves(square: u64, occupied: u64) -> u64 {
-    get_ray_rook_moves(square, occupied)
+pub fn black_pawn_promotion(index: usize) -> bool {
+    return index >= 8 && index < 16
 }
 
 #[inline(always)]
 #[cfg(target_feature = "bmi2")]
-pub fn get_bishop_moves(square: u64, occupied: u64) -> u64 {
-    get_pext_bishop_moves(square, occupied)
+pub fn get_rook_moves(piece_index: usize, occupied: u64) -> u64 {
+    get_pext_rook_moves(piece_index, occupied)
 }
 
 #[inline(always)]
 #[cfg(not(target_feature = "bmi2"))]
-pub fn get_bishop_moves(square: u64, occupied: u64) -> u64 {
-    get_ray_bishop_moves(square, occupied)
+pub fn get_rook_moves(piece_index: usize, occupied: u64) -> u64 {
+    get_ray_rook_moves(piece_index, occupied)
 }
 
 #[inline(always)]
 #[cfg(target_feature = "bmi2")]
-pub fn get_queen_moves(square: u64, occupied: u64) -> u64 {
-    get_pext_queen_moves(square, occupied)
+pub fn get_bishop_moves(piece_index: usize, occupied: u64) -> u64 {
+    get_pext_bishop_moves(piece_index, occupied)
 }
 
 #[inline(always)]
 #[cfg(not(target_feature = "bmi2"))]
-pub fn get_queen_moves(square: u64, occupied: u64) -> u64 {
-    get_ray_queen_moves(square, occupied)
+pub fn get_bishop_moves(piece_index: usize, occupied: u64) -> u64 {
+    get_ray_bishop_moves(piece_index, occupied)
+}
+
+#[inline(always)]
+#[cfg(target_feature = "bmi2")]
+pub fn get_queen_moves(piece_index: usize, occupied: u64) -> u64 {
+    get_pext_queen_moves(piece_index, occupied)
+}
+
+#[inline(always)]
+#[cfg(not(target_feature = "bmi2"))]
+pub fn get_queen_moves(piece_index: usize, occupied: u64) -> u64 {
+    get_ray_queen_moves(piece_index, occupied)
 }
 
 pub fn init_attack_table() {
-    let mut square = 1u64;
-    for _ in 0..64 {
-        let square_index = square.trailing_zeros() as usize;
-        let mask = ROOK_MASKS[square_index];
-        let offset = ROOK_OFFSETS[square_index];
+    for i in 0..64 {
+        let mask = ROOK_MASKS[i];
+        let offset = ROOK_OFFSETS[i];
 
-        for i in 0..2_usize.pow(mask.count_ones()) {
-            let occupied = unsafe { _pdep_u64(i as u64, mask) };
-            let attacks = get_ray_rook_moves(square, occupied);
-            let index = offset + i;
+        for j in 0..2_usize.pow(mask.count_ones()) {
+            let occupied = unsafe { _pdep_u64(j as u64, mask) };
+            let attacks = get_ray_rook_moves(i, occupied);
+            let index = offset + j;
 
             unsafe { ATTACK_TABLE[index] = attacks };
         }
-
-        square <<= 1;
     }
 
-    square = 1u64;
-    for _ in 0..64 {
-        let square_index = square.trailing_zeros() as usize;
-        let mask = BISHOP_MASKS[square_index];
-        let offset = BISHOP_OFFSETS[square_index];
+    for i in 0..64 {
+        let mask = BISHOP_MASKS[i];
+        let offset = BISHOP_OFFSETS[i];
 
-        for i in 0..2_usize.pow(mask.count_ones()) {
-            let occupied = unsafe { _pdep_u64(i as u64, mask) };
-            let attacks = get_ray_bishop_moves(square, occupied);
-            let index = offset + i;
+        for j in 0..2_usize.pow(mask.count_ones()) {
+            let occupied = unsafe { _pdep_u64(j as u64, mask) };
+            let attacks = get_ray_bishop_moves(i, occupied);
+            let index = offset + j;
 
             unsafe { ATTACK_TABLE[index] = attacks };
         }
-
-        square <<= 1;
     }
 }
 
-pub fn get_ray_rook_moves(square: u64, occupied: u64) -> u64 {
-    let index = square.trailing_zeros() as usize;
-    let blockers = occupied & ROOK_MASKS[index];
+pub fn get_ray_rook_moves(piece_index: usize, occupied: u64) -> u64 {
+    let square = 1u64 << piece_index;
+    let blockers = occupied & ROOK_MASKS[piece_index];
 
-    let rank = get_rank(square);
+    let rank = RANKS[piece_index / 8];
 
     let mut result = EMPTY;
     let mut move_to: u64;
@@ -843,9 +825,9 @@ pub fn get_ray_rook_moves(square: u64, occupied: u64) -> u64 {
     result
 }
 
-pub fn get_ray_bishop_moves(square: u64, occupied: u64) -> u64 {
-    let index = square.trailing_zeros() as usize;
-    let blockers = occupied & BISHOP_MASKS[index];
+pub fn get_ray_bishop_moves(piece_index: usize, occupied: u64) -> u64 {
+    let square = 1u64 << piece_index;
+    let blockers = occupied & BISHOP_MASKS[piece_index];
 
     let mut result = EMPTY;
     let mut move_to: u64;
@@ -881,11 +863,11 @@ pub fn get_ray_bishop_moves(square: u64, occupied: u64) -> u64 {
     result
 }
 
-pub fn get_ray_queen_moves(square: u64, occupied: u64) -> u64 {
-    let index = square.trailing_zeros() as usize;
-    let blockers = occupied & (ROOK_MASKS[index] | BISHOP_MASKS[index]);
+pub fn get_ray_queen_moves(piece_index: usize, occupied: u64) -> u64 {
+    let square = 1u64 << piece_index;
+    let blockers = occupied & (ROOK_MASKS[piece_index] | BISHOP_MASKS[piece_index]);
 
-    let rank = get_rank(square);
+    let rank = RANKS[piece_index / 8];
 
     let mut result = EMPTY;
     let mut move_to: u64;
@@ -950,10 +932,9 @@ pub fn get_ray_queen_moves(square: u64, occupied: u64) -> u64 {
 }
 
 #[inline(always)]
-pub fn get_pext_rook_moves(square: u64, occupied: u64) -> u64 {
-    let square_index = square.trailing_zeros() as usize;
-    let mask = ROOK_MASKS[square_index];
-    let offset = ROOK_OFFSETS[square_index];
+pub fn get_pext_rook_moves(piece_index: usize, occupied: u64) -> u64 {
+    let mask = ROOK_MASKS[piece_index];
+    let offset = ROOK_OFFSETS[piece_index];
 
     let pext = unsafe { _pext_u64(occupied, mask) as usize };
     let index = pext + offset;
@@ -962,10 +943,9 @@ pub fn get_pext_rook_moves(square: u64, occupied: u64) -> u64 {
 }
 
 #[inline(always)]
-pub fn get_pext_bishop_moves(square: u64, occupied: u64) -> u64 {
-    let square_index = square.trailing_zeros() as usize;
-    let mask = BISHOP_MASKS[square_index];
-    let offset = BISHOP_OFFSETS[square_index];
+pub fn get_pext_bishop_moves(piece_index: usize, occupied: u64) -> u64 {
+    let mask = BISHOP_MASKS[piece_index];
+    let offset = BISHOP_OFFSETS[piece_index];
 
     let pext = unsafe { _pext_u64(occupied, mask) as usize };
     let index = pext + offset;
@@ -974,17 +954,16 @@ pub fn get_pext_bishop_moves(square: u64, occupied: u64) -> u64 {
 }
 
 #[inline(always)]
-pub fn get_pext_queen_moves(square: u64, occupied: u64) -> u64 {
-    let square_index = square.trailing_zeros() as usize;
+pub fn get_pext_queen_moves(piece_index: usize, occupied: u64) -> u64 {
 
-    let rook_mask = ROOK_MASKS[square_index];
-    let rook_offset = ROOK_OFFSETS[square_index];
+    let rook_mask = ROOK_MASKS[piece_index];
+    let rook_offset = ROOK_OFFSETS[piece_index];
     let rook_pext = unsafe { _pext_u64(occupied, rook_mask) as usize };
     let rook_index = rook_pext + rook_offset;
     let rook_attacks = unsafe { *TABLE_PTR.add(rook_index) };
 
-    let bishop_mask = BISHOP_MASKS[square_index];
-    let bishop_offset = BISHOP_OFFSETS[square_index];
+    let bishop_mask = BISHOP_MASKS[piece_index];
+    let bishop_offset = BISHOP_OFFSETS[piece_index];
     let bishop_pext = unsafe { _pext_u64(occupied, bishop_mask) as usize };
     let bishop_index = bishop_pext + bishop_offset;
     let bishop_attacks = unsafe { *TABLE_PTR.add(bishop_index) };

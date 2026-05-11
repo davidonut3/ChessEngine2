@@ -1,19 +1,64 @@
 Move generation before optimization:
 
-Getting 3195901860 moves took 8.017258 seconds, which is 398.6278M nodes per second
+Position:               rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
+Depth:                  7
+Total moves:            3195901860
+Total seconds:          7.7813935
+Moves per second:       410.71075
+
+For castling:
+
+Position:               r3k2r/p1ppqpb1/bn2pnp1/3PN3/4P3/PpN2QPp/1PPBBP1P/R3K2R b KQkq - 0 2
+Depth:                  6
+Total moves:            7103239416
+Total seconds:          15.098392
+Moves per second:       470.4633
+
+NOTE: The number of applications running simultaneously impacts the performance tests 
 
 Optimizations:
 
-SWITCH get_moves FUNCTIONS TO index: usize INSTEAD OF square: u64 !!!
+(1) Add castling to king_moves directly instead of in a separate if statement, and do castling checks in one if statement:
 
-/*
-OPTIMISATIONS:
+Position:               r3k2r/p1ppqpb1/bn2pnp1/3PN3/4P3/PpN2QPp/1PPBBP1P/R3K2R b KQkq - 0 2
+Depth:                  6
+Total moves:            7103239416
+Total seconds:          15.996821
+Moves per second:       444.04068
 
-Switch get_ _moves functions to index based? (Or rather one function for index, one for square?)
+Does not seem to be faster, so we keep it as it is.
 
-Do we do pins in a while loop? Is there another option?
+(2) Switch move creation and get moves functions to index instead of square
 
-*/
+Position:               rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
+Depth:                  7
+Total moves:            3195901860
+Total seconds:          7.3406286
+Moves per second:       435.3717
+
+Position:               r3k2r/p1ppqpb1/bn2pnp1/3PN3/4P3/PpN2QPp/1PPBBP1P/R3K2R b KQkq - 0 2
+Depth:                  6
+Total moves:            7103239416
+Total seconds:          14.857199
+Moves per second:       478.10083
+
+Definitely worth it!
+
+(3) Loop over each pin instead of looping over each piece and then over each pin
+
+Position:               rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
+Depth:                  7
+Total moves:            3195901860
+Total seconds:          7.01982
+Moves per second:       455.26834
+
+Position:               r3k2r/p1ppqpb1/bn2pnp1/3PN3/4P3/PpN2QPp/1PPBBP1P/R3K2R b KQkq - 0 2
+Depth:                  6
+Total moves:            7103239416
+Total seconds:          13.859701
+Moves per second:       512.51025
+
+Definitely worth it!
 
 
 Other things:

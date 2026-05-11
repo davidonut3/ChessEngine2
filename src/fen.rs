@@ -21,12 +21,12 @@ macro_rules! gen_pseudo_legal {
         $queenside_rights:ident,
         $kingside_squares:ident,
         $queenside_squares:ident,
-        $kingside_to:ident,
-        $queenside_to:ident,
+        $kingside_to_index:ident,
+        $queenside_to_index:ident,
 
         $pawn_attacks:ident,
         $pawn_steps:ident,
-        $promotion_rank:ident,
+        $pawn_promotion:ident,
 
     ) => {
         fn $name(&self) -> Moves {
@@ -35,20 +35,21 @@ macro_rules! gen_pseudo_legal {
             let mut moves = Moves::empty();
 
             let king = self.array[$king];
+            let king_index = king.trailing_zeros() as usize;
             let info = self.array[INFO];
+            let ep = info_to_enpassant(info);
 
             let opponents = $get_opps(&self.array);
             let team = $get_team(&self.array);
             let occupied = opponents | team;
 
-            let mut king_moves = get_king_moves(king) & !team;
+            let mut king_moves = KING_MOVES[king_index] & !team;
             while king_moves != 0 {
                 let index = king_moves.trailing_zeros() as usize;
-                let to = 1u64 << index;
-                let move1 = Move::new(king, to);
+                let move1 = Move::new(king_index, index);
                 moves.add(move1);
 
-                king_moves ^= to;
+                king_moves &= king_moves.wrapping_sub(1);
             }
 
             let kingside = info & $kingside_rights != 0;
@@ -57,35 +58,31 @@ macro_rules! gen_pseudo_legal {
             let queenside_free = occupied & $queenside_squares == 0;
 
             if kingside && kingside_free {
-                let move1 = Move::new(king, $kingside_to);
+                let move1 = Move::new(king_index, $kingside_to_index);
                 moves.add(move1);
             }
 
             if queenside && queenside_free {
-                let move1 = Move::new(king, $queenside_to);
+                let move1 = Move::new(king_index, $queenside_to_index);
                 moves.add(move1);
             }
 
             let mut pawns = self.array[$pawn];
             while pawns != 0 {
                 let pawn_index = pawns.trailing_zeros() as usize;
-                let pawn = 1u64 << pawn_index;
 
-                let pawn_attacks = $pawn_attacks(pawn) & (opponents | info_to_enpassant(info));
-                let pawn_steps = $pawn_steps(pawn, occupied);
+                let pawn_attacks = $pawn_attacks[pawn_index] & (opponents | ep);
+                let pawn_steps = $pawn_steps(pawn_index, occupied);
                 let mut pawn_moves = pawn_attacks | pawn_steps;
-
-                let promotes = pawn & $promotion_rank != 0;
 
                 while pawn_moves != 0 {
                     let index = pawn_moves.trailing_zeros() as usize;
-                    let to = 1u64 << index;
 
-                    if promotes {
-                        let move1 = Move::new_with_prom(pawn, to, Prom::Queen);
-                        let move2 = Move::new_with_prom(pawn, to, Prom::Bishop);
-                        let move3 = Move::new_with_prom(pawn, to, Prom::Knight);
-                        let move4 = Move::new_with_prom(pawn, to, Prom::Rook);
+                    if $pawn_promotion(pawn_index) {
+                        let move1 = Move::new_with_prom(pawn_index, index, Prom::Queen);
+                        let move2 = Move::new_with_prom(pawn_index, index, Prom::Bishop);
+                        let move3 = Move::new_with_prom(pawn_index, index, Prom::Knight);
+                        let move4 = Move::new_with_prom(pawn_index, index, Prom::Rook);
 
                         moves.add(move1);
                         moves.add(move2);
@@ -93,95 +90,86 @@ macro_rules! gen_pseudo_legal {
                         moves.add(move4);
 
                     } else {
-                        let move1 = Move::new(pawn, to);
+                        let move1 = Move::new(pawn_index, index);
                         moves.add(move1);
                     }
 
-                    pawn_moves ^= to;
+                    pawn_moves &= pawn_moves.wrapping_sub(1);
                 }
 
-                pawns ^= pawn;
+                pawns &= pawns.wrapping_sub(1);
             }
 
             let mut knights = self.array[$knight];
             while knights != 0 {
                 let piece_index = knights.trailing_zeros() as usize;
-                let piece = 1u64 << piece_index;
 
-                let mut knight_moves = get_knight_moves(piece) & !team;
+                let mut knight_moves = KNIGHT_MOVES[piece_index] & !team;
                 while knight_moves != 0 {
                     let index = knight_moves.trailing_zeros() as usize;
-                    let to = 1u64 << index;
 
-                    let move1 = Move::new(piece, to);
+                    let move1 = Move::new(piece_index, index);
                     moves.add(move1);
 
-                    knight_moves ^= to;
+                    knight_moves &= knight_moves.wrapping_sub(1);
                 }
 
-                knights ^= piece;
+                knights &= knights.wrapping_sub(1);
             }
 
             let mut bishops = self.array[$bishop];
             while bishops != 0 {
                 let piece_index = bishops.trailing_zeros() as usize;
-                let piece = 1u64 << piece_index;
 
-                let mut bishop_moves = get_bishop_moves(piece, occupied) & !team;
+                let mut bishop_moves = get_bishop_moves(piece_index, occupied) & !team;
                 while bishop_moves != 0 {
                     let index = bishop_moves.trailing_zeros() as usize;
-                    let to = 1u64 << index;
 
-                    let move1 = Move::new(piece, to);
+                    let move1 = Move::new(piece_index, index);
                     moves.add(move1);
 
-                    bishop_moves ^= to;
+                    bishop_moves &= bishop_moves.wrapping_sub(1);
                 }
 
-                bishops ^= piece;
+                bishops &= bishops.wrapping_sub(1);
             }
 
             let mut rooks = self.array[$rook];
             while rooks != 0 {
                 let piece_index = rooks.trailing_zeros() as usize;
-                let piece = 1u64 << piece_index;
 
-                let mut rook_moves = get_rook_moves(piece, occupied) & !team;
+                let mut rook_moves = get_rook_moves(piece_index, occupied) & !team;
                 while rook_moves != 0 {
                     let index = rook_moves.trailing_zeros() as usize;
-                    let to = 1u64 << index;
 
-                    let move1 = Move::new(piece, to);
+                    let move1 = Move::new(piece_index, index);
                     moves.add(move1);
 
-                    rook_moves ^= to;
+                    rook_moves &= rook_moves.wrapping_sub(1);
                 }
 
-                rooks ^= piece;
+                rooks &= rooks.wrapping_sub(1);
             }
 
             let mut queens = self.array[$queen];
             while queens != 0 {
                 let piece_index = queens.trailing_zeros() as usize;
-                let piece = 1u64 << piece_index;
 
-                let mut queen_moves = get_queen_moves(piece, occupied) & !team;
+                let mut queen_moves = get_queen_moves(piece_index, occupied) & !team;
                 while queen_moves != 0 {
                     let index = queen_moves.trailing_zeros() as usize;
-                    let to = 1u64 << index;
 
-                    let move1 = Move::new(piece, to);
+                    let move1 = Move::new(piece_index, index);
                     moves.add(move1);
 
-                    queen_moves ^= to;
+                    queen_moves &= queen_moves.wrapping_sub(1);
                 }
 
-                queens ^= piece;
+                queens &= queens.wrapping_sub(1);
             }
 
             moves
         }
-
     };
 }
 
@@ -209,8 +197,8 @@ macro_rules! gen_legal {
         $queenside_rights:ident,
         $kingside_squares:ident,
         $queenside_squares:ident,
-        $kingside_to:ident,
-        $queenside_to:ident,
+        $kingside_to_index:ident,
+        $queenside_to_index:ident,
         $kingside_attack_1:ident,
         $kingside_attack_2:ident,
         $queenside_attack_1:ident,
@@ -218,7 +206,7 @@ macro_rules! gen_legal {
 
         $pawn_attacks:ident,
         $pawn_steps:ident,
-        $promotion_rank:ident,
+        $pawn_promotion:ident,
 
         $opp_pawn_attacks:ident,
         $ep_rank:ident,
@@ -234,24 +222,27 @@ macro_rules! gen_legal {
             let occupied = team | opps;
 
             let king = self.array[$king];
+            let king_index = king.trailing_zeros() as usize;
+
             let info = self.array[INFO];
             let mut ep = info_to_enpassant(info);
+            let ep_index = ep.trailing_zeros() as usize;
             let ep_piece = $rank_backward(ep);
 
             // The king cannot move to a square that has a team member
-            let mut king_moves = get_king_moves(king) & !team;
+            let mut king_moves = KING_MOVES[king_index] & !team;
 
             // We determine the positions of the pieces that check the king
             // We use the sliding moves later to compute the check mask
             // We see the queen as a rook or as a bishop whenever applicable
 
-            let knight_checks = get_knight_moves(king) & self.array[$opp_knight];
-            let pawn_checks = $pawn_attacks(king) & self.array[$opp_pawn];
+            let knight_checks = KNIGHT_MOVES[king_index] & self.array[$opp_knight];
+            let pawn_checks = $pawn_attacks[king_index] & self.array[$opp_pawn];
 
-            let king_rook_moves = get_rook_moves(king, occupied);
+            let king_rook_moves = get_rook_moves(king_index, occupied);
             let rook_checks = king_rook_moves & (self.array[$opp_rook] | self.array[$opp_queen]);
 
-            let king_bishop_moves = get_bishop_moves(king, occupied);
+            let king_bishop_moves = get_bishop_moves(king_index, occupied);
             let bishop_checks = king_bishop_moves & (self.array[$opp_bishop] | self.array[$opp_queen]);
 
             let checking_pieces = knight_checks | pawn_checks | rook_checks | bishop_checks;
@@ -261,15 +252,14 @@ macro_rules! gen_legal {
             let occupied_except_king = occupied & !king;
             while king_moves != 0 {
                 let index = king_moves.trailing_zeros() as usize;
-                let to = 1u64 << index;
 
                 // We remove the king from the board, so that squares 'behind' the king are also checked, preventing backwards check evasion
-                if !self.$square_attacked(to, occupied_except_king) {
-                    let move1 = Move::new(king, to);
+                if !self.$square_attacked(index, occupied_except_king) {
+                    let move1 = Move::new(king_index, index);
                     moves.add(move1);
                 }
 
-                king_moves ^= to;
+                king_moves &= king_moves.wrapping_sub(1);
             }
 
             // In case of two or more checks, only the king can move, so we return only those moves
@@ -286,9 +276,11 @@ macro_rules! gen_legal {
             let mut check_mask = checking_pieces;
 
             if rook_checks != 0 {
-                check_mask |= king_rook_moves & get_rook_moves(rook_checks, occupied)
+                let check_index = rook_checks.trailing_zeros() as usize;
+                check_mask |= king_rook_moves & get_rook_moves(check_index, occupied)
             } else if bishop_checks != 0 {
-                check_mask |= king_bishop_moves & get_bishop_moves(bishop_checks, occupied)
+                let check_index = bishop_checks.trailing_zeros() as usize;
+                check_mask |= king_bishop_moves & get_bishop_moves(check_index, occupied)
             }
 
             // We allow pawns to resolve checks by doing enpassant
@@ -301,14 +293,16 @@ macro_rules! gen_legal {
             if check_mask == 0 { check_mask = u64::MAX; pawn_check_mask = u64::MAX }
 
             // We compute the pins, we DO NOT consider enpassant edge cases here
-            let mut pin_masks = [0u64; 8];
-            let mut pin_count: usize = 0;
+            // We use a lookup table to loop through pins instead of pieces
+            // This should be faster since pins are somewhat rare
+            // This method works since a piece can be pinned by at most one attacker
+            let mut pin_array = [u64::MAX; 64];
 
             // We only consider the opponents and the king as blockers
             let pin_occupied = opps | king;
 
-            let king_rook_pins = get_rook_moves(king, pin_occupied);
-            let king_bishop_pins = get_bishop_moves(king, pin_occupied);
+            let king_rook_pins = get_rook_moves(king_index, pin_occupied);
+            let king_bishop_pins = get_bishop_moves(king_index, pin_occupied);
 
             let mut rook_pins = king_rook_pins & (self.array[$opp_rook] | self.array[$opp_queen]);
             let mut bishop_pins = king_bishop_pins & (self.array[$opp_bishop] | self.array[$opp_queen]);
@@ -316,31 +310,41 @@ macro_rules! gen_legal {
             // We check if there is exactly one team member between the king and an opponent rook or queen
             // If so, we add this to the list of pin masks, to later check with the team members
             while rook_pins != 0 {
-                let index = rook_pins.trailing_zeros();
-                let square = 1u64 << index;
+                let index = rook_pins.trailing_zeros() as usize;
 
-                let pin_mask = get_rook_moves(square, pin_occupied) & king_rook_pins;
-                if (pin_mask & team).count_ones() == 1 {
-                    pin_masks[pin_count] = pin_mask | square;
-                    pin_count += 1;
+                let mask = get_rook_moves(index, pin_occupied) & king_rook_pins;
+                if (mask & team).count_ones() == 1 {
+                    let pin_mask = mask | (1u64 << index);
+                    let mut pinned = pin_mask;
+                    while pinned != 0 {
+                        let pin_index = pinned.trailing_zeros() as usize;
+                        pin_array[pin_index] = pin_mask;
+
+                        pinned &= pinned.wrapping_sub(1);
+                    }
                 }
 
-                rook_pins ^= square
+                rook_pins &= rook_pins.wrapping_sub(1);
             }
 
             // We check if there is exactly one team member between the king and an opponent bishop or queen
             // If so, we add this to the list of pin masks, to later check with the team members
             while bishop_pins != 0 {
-                let index = bishop_pins.trailing_zeros();
-                let square = 1u64 << index;
+                let index = bishop_pins.trailing_zeros() as usize;
 
-                let pin_mask = get_bishop_moves(square, pin_occupied) & king_bishop_pins;
-                if (pin_mask & team).count_ones() == 1 {
-                    pin_masks[pin_count] = pin_mask | square;
-                    pin_count += 1;
+                let mask = get_bishop_moves(index, pin_occupied) & king_bishop_pins;
+                if (mask & team).count_ones() == 1 {
+                    let pin_mask = mask | (1u64 << index);
+                    let mut pinned = pin_mask;
+                    while pinned != 0 {
+                        let pin_index = pinned.trailing_zeros() as usize;
+                        pin_array[pin_index] = pin_mask;
+
+                        pinned &= pinned.wrapping_sub(1);
+                    }
                 }
 
-                bishop_pins ^= square
+                bishop_pins &= bishop_pins.wrapping_sub(1);
             }
 
             // For castling, we assume that the king and rooks are in the correct positions if the rights are set
@@ -358,7 +362,7 @@ macro_rules! gen_legal {
                     if !self.$square_attacked($kingside_attack_2, occupied) {
 
                         // In case the squares are free and not under attack, we allow castling
-                        let move1 = Move::new(king, $kingside_to);
+                        let move1 = Move::new(king_index, $kingside_to_index);
                         moves.add(move1);
                     }
                 }
@@ -373,7 +377,7 @@ macro_rules! gen_legal {
                     if !self.$square_attacked($queenside_attack_2, occupied) {
 
                         // In case the squares are free and not under attack, we allow castling
-                        let move1 = Move::new(king, $queenside_to);
+                        let move1 = Move::new(king_index, $queenside_to_index);
                         moves.add(move1);
                     }
                 }
@@ -392,14 +396,14 @@ macro_rules! gen_legal {
 
                 // Case (1): For this case to occur the king must be on the fifth rank
                 if king & $ep_rank != 0 {
-                    let ep_attacker = $opp_pawn_attacks(ep) & self.array[$pawn];
+                    let ep_attacker = $opp_pawn_attacks[ep_index] & self.array[$pawn];
 
                     // If there is zero or two pawns that can take the enpassant, this case does not occur
                     if ep_attacker.count_ones() == 1 {
 
                         // We compute the king moves, ignoring the two pieces, to check if there is a rook or a queen
                         let ep_occupied = occupied & !(ep_attacker | ep_piece);
-                        let ep_pin_king_moves = get_rook_moves(king, ep_occupied) & $ep_rank;
+                        let ep_pin_king_moves = get_rook_moves(king_index, ep_occupied) & $ep_rank;
                         let ep_pin_attacker = ep_pin_king_moves & (self.array[$opp_rook] | self.array[$opp_queen]);
 
                         // If there is zero attackers, this case does not occur
@@ -408,7 +412,7 @@ macro_rules! gen_legal {
 
                             // We compute the squares between the king and the attacker
                             // If there are two pieces in this mask, these must be the two pieces, so we prevent enpassant
-                            let ep_mask = get_rook_moves(ep_pin_attacker, ep_occupied) & ep_pin_king_moves;
+                            let ep_mask = get_rook_moves(ep_pin_attacker.trailing_zeros() as usize, ep_occupied) & ep_pin_king_moves;
                             if (ep_mask & occupied).count_ones() == 2 {
                                 ep = EMPTY;
                             }
@@ -418,19 +422,19 @@ macro_rules! gen_legal {
                 // Case (2)
                 } else {
 
-                    let ep_index = ep_piece.trailing_zeros() as usize;
-                    let ep_diag = BISHOP_MOVES[ep_index] | ep_piece;
+                    let ep_piece_index = ep_piece.trailing_zeros() as usize;
+                    let ep_diag = BISHOP_MOVES[ep_piece_index] | ep_piece;
 
                     // For this case to occur the king must be on the same diagonal as the enpassant piece
                     if king & ep_diag != 0 {
 
-                        let ep_attacker = $opp_pawn_attacks(ep) & self.array[$pawn];
+                        let ep_attacker = $opp_pawn_attacks[ep_index] & self.array[$pawn];
 
                         // If there is no piece that can take the enpassant, this case cannot occur.
                         if ep_attacker.count_ones() != 0 {
 
                             let ep_occupied = occupied & !ep_piece;
-                            let ep_pin_king_moves = get_bishop_moves(king, ep_occupied) & ep_diag;
+                            let ep_pin_king_moves = get_bishop_moves(king_index, ep_occupied) & ep_diag;
                             let ep_pin_attacker = ep_pin_king_moves & (self.array[$opp_bishop] | self.array[$opp_queen]);
 
                             // If there is zero attackers, this case does not occur
@@ -439,7 +443,7 @@ macro_rules! gen_legal {
 
                                 // We compute the squares between the king and the attacker
                                 // If there is one piece in this mask, this must be the enpassant piece, so we prevent enpassant
-                                let ep_mask = get_bishop_moves(ep_pin_attacker, ep_occupied) & ep_pin_king_moves;
+                                let ep_mask = get_bishop_moves(ep_pin_attacker.trailing_zeros() as usize, ep_occupied) & ep_pin_king_moves;
                                 if (ep_mask & occupied).count_ones() == 1 {
                                     ep = EMPTY;
                                 }
@@ -452,30 +456,20 @@ macro_rules! gen_legal {
             // We generate the moves for the pawns
             let mut pawns = self.array[$pawn];
             while pawns != 0 {
-                let pawn_index = pawns.trailing_zeros() as usize;
-                let piece = 1u64 << pawn_index;
+                let piece_index = pawns.trailing_zeros() as usize;
 
-                let pawn_attacks = $pawn_attacks(piece) & (opps | ep);
-                let pawn_steps = $pawn_steps(piece, occupied);
-                let mut pawn_moves = (pawn_attacks | pawn_steps) & pawn_check_mask;
-
-                for i in 0..pin_count {
-                    if piece & pin_masks[i] != 0 {
-                        pawn_moves &= pin_masks[i];
-                    }
-                }
-
-                let promotes = piece & $promotion_rank != 0;
+                let pawn_attacks = $pawn_attacks[piece_index] & (opps | ep);
+                let pawn_steps = $pawn_steps(piece_index, occupied);
+                let mut pawn_moves = (pawn_attacks | pawn_steps) & pawn_check_mask & pin_array[piece_index];
 
                 while pawn_moves != 0 {
                     let index = pawn_moves.trailing_zeros() as usize;
-                    let to = 1u64 << index;
 
-                    if promotes {
-                        let move1 = Move::new_with_prom(piece, to, Prom::Queen);
-                        let move2 = Move::new_with_prom(piece, to, Prom::Bishop);
-                        let move3 = Move::new_with_prom(piece, to, Prom::Knight);
-                        let move4 = Move::new_with_prom(piece, to, Prom::Rook);
+                    if $pawn_promotion(piece_index) {
+                        let move1 = Move::new_with_prom(piece_index, index, Prom::Queen);
+                        let move2 = Move::new_with_prom(piece_index, index, Prom::Bishop);
+                        let move3 = Move::new_with_prom(piece_index, index, Prom::Knight);
+                        let move4 = Move::new_with_prom(piece_index, index, Prom::Rook);
 
                         moves.add(move1);
                         moves.add(move2);
@@ -483,122 +477,90 @@ macro_rules! gen_legal {
                         moves.add(move4);
 
                     } else {
-                        let move1 = Move::new(piece, to);
+                        let move1 = Move::new(piece_index, index);
                         moves.add(move1);
                     }
 
-                    pawn_moves ^= to;
+                    pawn_moves &= pawn_moves.wrapping_sub(1);
                 }
 
-                pawns ^= piece;
+                pawns &= pawns.wrapping_sub(1);
             }
 
             // We generate the moves for the knights
             let mut knights = self.array[$knight];
             while knights != 0 {
                 let piece_index = knights.trailing_zeros() as usize;
-                let piece = 1u64 << piece_index;
 
-                let mut knight_moves = get_knight_moves(piece) & !team & check_mask;
-
-                for i in 0..pin_count {
-                    if piece & pin_masks[i] != 0 {
-                        knight_moves &= pin_masks[i];
-                    }
-                }
+                let mut knight_moves = KNIGHT_MOVES[piece_index] & !team & check_mask & pin_array[piece_index];
 
                 while knight_moves != 0 {
                     let index = knight_moves.trailing_zeros() as usize;
-                    let to = 1u64 << index;
 
-                    let move1 = Move::new(piece, to);
+                    let move1 = Move::new(piece_index, index);
                     moves.add(move1);
 
-                    knight_moves ^= to;
+                    knight_moves &= knight_moves.wrapping_sub(1);
                 }
 
-                knights ^= piece;
+                knights &= knights.wrapping_sub(1);
             }
 
             // We generate the moves for the bishops
             let mut bishops = self.array[$bishop];
             while bishops != 0 {
                 let piece_index = bishops.trailing_zeros() as usize;
-                let piece = 1u64 << piece_index;
 
-                let mut bishop_moves = get_bishop_moves(piece, occupied) & !team & check_mask;
-
-                for i in 0..pin_count {
-                    if piece & pin_masks[i] != 0 {
-                        bishop_moves &= pin_masks[i];
-                    }
-                }
+                let mut bishop_moves = get_bishop_moves(piece_index, occupied) & !team & check_mask & pin_array[piece_index];
                 
                 while bishop_moves != 0 {
                     let index = bishop_moves.trailing_zeros() as usize;
-                    let to = 1u64 << index;
 
-                    let move1 = Move::new(piece, to);
+                    let move1 = Move::new(piece_index, index);
                     moves.add(move1);
 
-                    bishop_moves ^= to;
+                    bishop_moves &= bishop_moves.wrapping_sub(1);
                 }
 
-                bishops ^= piece;
+                bishops &= bishops.wrapping_sub(1);
             }
 
             // We generate the moves for the rooks
             let mut rooks = self.array[$rook];
             while rooks != 0 {
                 let piece_index = rooks.trailing_zeros() as usize;
-                let piece = 1u64 << piece_index;
 
-                let mut rook_moves = get_rook_moves(piece, occupied) & !team & check_mask;
-
-                for i in 0..pin_count {
-                    if piece & pin_masks[i] != 0 {
-                        rook_moves &= pin_masks[i];
-                    }
-                }
+                let mut rook_moves = get_rook_moves(piece_index, occupied) & !team & check_mask & pin_array[piece_index];
 
                 while rook_moves != 0 {
                     let index = rook_moves.trailing_zeros() as usize;
-                    let to = 1u64 << index;
 
-                    let move1 = Move::new(piece, to);
+                    let move1 = Move::new(piece_index, index);
                     moves.add(move1);
 
-                    rook_moves ^= to;
+                    rook_moves &= rook_moves.wrapping_sub(1);
                 }
 
-                rooks ^= piece;
+                rooks &= rooks.wrapping_sub(1);
             }
 
             // We generate the moves for the queens
             let mut queens = self.array[$queen];
             while queens != 0 {
                 let piece_index = queens.trailing_zeros() as usize;
-                let piece = 1u64 << piece_index;
 
-                let mut queen_moves = get_queen_moves(piece, occupied) & !team & check_mask;
-
-                for i in 0..pin_count {
-                    if piece & pin_masks[i] != 0 {
-                        queen_moves &= pin_masks[i];
-                    }
-                }
+                let mut queen_moves = get_queen_moves(piece_index, occupied) & !team & check_mask & pin_array[piece_index];
 
                 while queen_moves != 0 {
                     let index = queen_moves.trailing_zeros() as usize;
-                    let to = 1u64 << index;
 
-                    let move1 = Move::new(piece, to);
+                    let move1 = Move::new(piece_index, index);
                     moves.add(move1);
 
-                    queen_moves ^= to;
+                    queen_moves &= queen_moves.wrapping_sub(1);
                 }
 
-                queens ^= piece;
+                queens &= queens.wrapping_sub(1);
             }
 
             moves
@@ -673,9 +635,11 @@ impl Fen {
     pub fn in_check(&self) -> bool {
         let occupied = get_occupancy(&self.array);
         if self.white_to_move() { 
-            self.is_square_attacked_white(self.array[KING_W], occupied)
+            let king_index = self.array[KING_W].trailing_zeros() as usize;
+            self.is_square_attacked_white(king_index, occupied)
         } else {
-            self.is_square_attacked_black(self.array[KING_B], occupied)
+            let king_index = self.array[KING_B].trailing_zeros() as usize;
+            self.is_square_attacked_black(king_index, occupied)
         }
     }
 
@@ -880,31 +844,31 @@ impl Fen {
     }
 
     #[inline(always)]
-    fn is_square_attacked_white(&self, square: u64, occupied: u64) -> bool {
+    fn is_square_attacked_white(&self, index: usize, occupied: u64) -> bool {
         // We let the square make the moves of each piece, to see if there is a piece that is attacking the square.
         // This is more efficient than calculating all the attacks, since there is only one square.
         // It is difficult to test is this is optimal, but it seems to be at least fast enough.
 
-        let knight_attacks = get_knight_moves(square) & self.array[KNIGHT_B];
-        let pawn_attacks = get_white_pawn_attacks(square) & self.array[PAWN_B];
-        let king_attacks = get_king_moves(square) & self.array[KING_B];
-        let rook_or_queen_attacks = get_rook_moves(square, occupied) & (self.array[ROOK_B] | self.array[QUEEN_B]);
-        let bishop_or_queen_attacks = get_bishop_moves(square, occupied) & (self.array[BISHOP_B] | self.array[QUEEN_B]);
+        let knight_attacks = KNIGHT_MOVES[index] & self.array[KNIGHT_B];
+        let pawn_attacks = WHITE_PAWN_ATTACKS[index] & self.array[PAWN_B];
+        let king_attacks = KING_MOVES[index] & self.array[KING_B];
+        let rook_or_queen_attacks = get_rook_moves(index, occupied) & (self.array[ROOK_B] | self.array[QUEEN_B]);
+        let bishop_or_queen_attacks = get_bishop_moves(index, occupied) & (self.array[BISHOP_B] | self.array[QUEEN_B]);
 
         knight_attacks | pawn_attacks | king_attacks | rook_or_queen_attacks | bishop_or_queen_attacks != 0
     }
 
     #[inline(always)]
-    fn is_square_attacked_black(&self, square: u64, occupied: u64) -> bool {
+    fn is_square_attacked_black(&self, index: usize, occupied: u64) -> bool {
         // We let the square make the moves of each piece, to see if there is a piece that is attacking the square.
         // This is more efficient than calculating all the attacks, since there is only one square.
         // It is difficult to test is this is optimal, but it seems to be at least fast enough.
 
-        let knight_attacks = get_knight_moves(square) & self.array[KNIGHT_W];
-        let pawn_attacks = get_black_pawn_attacks(square) & self.array[PAWN_W];
-        let king_attacks = get_king_moves(square) & self.array[KING_W];
-        let rook_or_queen_attacks = get_rook_moves(square, occupied) & (self.array[ROOK_W] | self.array[QUEEN_W]);
-        let bishop_or_queen_attacks = get_bishop_moves(square, occupied) & (self.array[BISHOP_W] | self.array[QUEEN_W]);
+        let knight_attacks = KNIGHT_MOVES[index] & self.array[KNIGHT_W];
+        let pawn_attacks = BLACK_PAWN_ATTACKS[index] & self.array[PAWN_W];
+        let king_attacks = KING_MOVES[index] & self.array[KING_W];
+        let rook_or_queen_attacks = get_rook_moves(index, occupied) & (self.array[ROOK_W] | self.array[QUEEN_W]);
+        let bishop_or_queen_attacks = get_bishop_moves(index, occupied) & (self.array[BISHOP_W] | self.array[QUEEN_W]);
 
         knight_attacks | pawn_attacks | king_attacks | rook_or_queen_attacks | bishop_or_queen_attacks != 0
     }
@@ -926,12 +890,12 @@ impl Fen {
         WHITE_QUEENSIDE_RIGHTS,
         WHITE_KINGSIDE_SQUARES,
         WHITE_QUEENSIDE_SQUARES,
-        WHITE_KINGSIDE_MOVE_TO,
-        WHITE_QUEENSIDE_MOVE_TO,
+        WHITE_KINGSIDE_MOVE_TO_INDEX,
+        WHITE_QUEENSIDE_MOVE_TO_INDEX,
 
-        get_white_pawn_attacks,
+        WHITE_PAWN_ATTACKS,
         get_white_pawn_steps,
-        RANK_7,
+        white_pawn_promotion,
     );
 
     gen_pseudo_legal!(
@@ -951,12 +915,12 @@ impl Fen {
         BLACK_QUEENSIDE_RIGHTS,
         BLACK_KINGSIDE_SQUARES,
         BLACK_QUEENSIDE_SQUARES,
-        BLACK_KINGSIDE_MOVE_TO,
-        BLACK_QUEENSIDE_MOVE_TO,
+        BLACK_KINGSIDE_MOVE_TO_INDEX,
+        BLACK_QUEENSIDE_MOVE_TO_INDEX,
 
-        get_black_pawn_attacks,
+        BLACK_PAWN_ATTACKS,
         get_black_pawn_steps,
-        RANK_2,
+        black_pawn_promotion,
     );
 
     gen_legal!(
@@ -982,18 +946,18 @@ impl Fen {
         WHITE_QUEENSIDE_RIGHTS,
         WHITE_KINGSIDE_SQUARES,
         WHITE_QUEENSIDE_SQUARES,
-        WHITE_KINGSIDE_MOVE_TO,
-        WHITE_QUEENSIDE_MOVE_TO,
+        WHITE_KINGSIDE_MOVE_TO_INDEX,
+        WHITE_QUEENSIDE_MOVE_TO_INDEX,
         WHITE_KINGSIDE_ATTACK_1,
         WHITE_KINGSIDE_ATTACK_2,
         WHITE_QUEENSIDE_ATTACK_1,
         WHITE_QUEENSIDE_ATTACK_2,
 
-        get_white_pawn_attacks,
+        WHITE_PAWN_ATTACKS,
         get_white_pawn_steps,
-        RANK_7,
+        white_pawn_promotion,
 
-        get_black_pawn_attacks,
+        BLACK_PAWN_ATTACKS,
         RANK_5,
         rank_down,
 
@@ -1023,18 +987,18 @@ impl Fen {
         BLACK_QUEENSIDE_RIGHTS,
         BLACK_KINGSIDE_SQUARES,
         BLACK_QUEENSIDE_SQUARES,
-        BLACK_KINGSIDE_MOVE_TO,
-        BLACK_QUEENSIDE_MOVE_TO,
+        BLACK_KINGSIDE_MOVE_TO_INDEX,
+        BLACK_QUEENSIDE_MOVE_TO_INDEX,
         BLACK_KINGSIDE_ATTACK_1,
         BLACK_KINGSIDE_ATTACK_2,
         BLACK_QUEENSIDE_ATTACK_1,
         BLACK_QUEENSIDE_ATTACK_2,
 
-        get_black_pawn_attacks,
+        BLACK_PAWN_ATTACKS,
         get_black_pawn_steps,
-        RANK_2,
+        black_pawn_promotion,
 
-        get_white_pawn_attacks,
+        WHITE_PAWN_ATTACKS,
         RANK_4,
         rank_up,
 

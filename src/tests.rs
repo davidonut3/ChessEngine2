@@ -1,4 +1,4 @@
-use std::time::{Instant, Duration};
+use std::time::Instant;
 
 use rand::Rng;
 
@@ -6,7 +6,6 @@ use crate::fen::Fen;
 use crate::fish::fish_perft;
 use crate::games::get_games;
 use crate::utils::*;
-use crate::movegen::*;
 use crate::moves::*;
 
 pub const SINGLE_BITS: BitboardTable = [
@@ -274,154 +273,6 @@ pub fn test_iterator_speed() {
     test_iterator_speed_4(test_count);
 }
 
-pub fn test_pext_correctness() {
-    let games = get_games();
-    let mut fens = Vec::new();
-
-    for fen_str in games {
-        fens.push(Fen::from_str(&fen_str).unwrap())
-    }
-
-    for fen in &fens {
-        let white = get_white_pieces(&fen.array);
-        let black = get_black_pieces(&fen.array);
-        let occupied = white | black;
-
-        let mut rooks = fen.array[ROOK_W];
-        while rooks != 0 {
-            let square = 1u64 << rooks.trailing_zeros();
-
-            let attacks_ray = get_ray_rook_moves(square, occupied) & !white;
-            let attacks_pext = get_pext_rook_moves(square, occupied) & !white;
-
-            if attacks_ray != attacks_pext {
-                println!("{}", fen.to_string());
-                fen.print_board();
-                crate::parsing::print_bitboard(square);
-                println!();
-                crate::parsing::print_bitboard(attacks_ray);
-                println!();
-                crate::parsing::print_bitboard(attacks_pext);
-                println!();
-                panic!();
-            }
-
-            rooks ^= square
-        }
-    }
-
-    println!("Generated moves checked succesfully")
-}
-
-pub fn test_pext_speed() {
-    let games = get_games();
-    let mut fens = Vec::new();
-
-    for fen_str in games {
-        for _ in 0..100 {
-            fens.push(Fen::from_str(&fen_str).unwrap())
-        }
-    }
-
-    let mut total = EMPTY;
-
-    let start = Instant::now();
-    for fen in &fens {
-        let white = get_white_pieces(&fen.array);
-        let black = get_black_pieces(&fen.array);
-        let occupied = white | black;
-
-        let mut rooks = fen.array[ROOK_W];
-        while rooks != 0 {
-            let square = 1u64 << rooks.trailing_zeros();
-
-            let attacks = get_pext_rook_moves(square, occupied) & !white;
-
-            total = total.wrapping_add(attacks);
-
-            rooks ^= square
-        }
-    }
-
-    println!("Test pext: {}", start.elapsed().as_nanos());
-}
-
-pub fn test_ray_speed() {
-    let games = get_games();
-    let mut fens = Vec::new();
-
-    for fen_str in games {
-        for _ in 0..100 {
-            fens.push(Fen::from_str(&fen_str).unwrap())
-        }
-    }
-
-    let mut total = EMPTY;
-
-    let start = Instant::now();
-    for fen in &fens {
-        let white = get_white_pieces(&fen.array);
-        let black = get_black_pieces(&fen.array);
-        let occupied = white | black;
-
-        let mut rooks = fen.array[ROOK_W];
-        while rooks != 0 {
-            let square = 1u64 << rooks.trailing_zeros();
-
-            let attacks = get_ray_rook_moves(square, occupied) & !white;
-
-            total = total.wrapping_add(attacks);
-
-            rooks ^= square
-        }
-    }
-
-    println!("Test rays: {}", start.elapsed().as_nanos());
-}
-
-pub fn test_gen_speed() {
-    let games = get_games();
-    let mut fens = Vec::new();
-
-    for fen_str in games {
-        for _ in 0..100 {
-            fens.push(Fen::from_str(&fen_str).unwrap())
-        }
-    }
-
-    let mut total = EMPTY;
-
-    let start = Instant::now();
-    for fen in &fens {
-        let white = get_white_pieces(&fen.array);
-        let black = get_black_pieces(&fen.array);
-        let occupied = white | black;
-
-        let mut rooks = fen.array[ROOK_W];
-        while rooks != 0 {
-            let square = 1u64 << rooks.trailing_zeros();
-
-            let attacks = get_rook_moves(square, occupied) & !white;
-
-            total = total.wrapping_add(attacks);
-
-            rooks ^= square
-        }
-    }
-
-    println!("Test general: {}", start.elapsed().as_nanos());
-}
-
-pub fn test_pext_vs_ray_speed() {
-    
-    // We test ray twice since there seems to be a latency in the first test
-    test_ray_speed();
-    
-    test_gen_speed();
-    test_ray_speed();
-    test_pext_speed();
-}
-
 pub fn perft(depth: usize, fen: &Fen) -> PerftResult {
     let mut result = PerftResult::empty();
     result.moves = fen.get_moves();
@@ -458,6 +309,8 @@ pub fn recursive_perft(depth: usize, fen: &Fen) -> usize {
 }
 
 pub fn compare_perft_results(depth: usize, fen: &Fen) {
+    println!("Comparing position {} at depth {}", fen.to_string(), depth);
+
     let our_result = perft(depth, &fen);
     let fish_result = fish_perft(depth, &fen);
 
@@ -500,7 +353,7 @@ pub fn compare_perft_results(depth: usize, fen: &Fen) {
         }
     }
 
-    println!("Comparison at {} depth {} succesful!", fen.to_string(), depth)
+    println!("Succes!\n")
 }
 
 pub fn check_perft_edge_cases() {
@@ -512,78 +365,14 @@ pub fn check_perft_edge_cases() {
     println!("\nEdge case test completed")
 }
 
-pub fn move_gen_perft(count: usize) {
-    let games = get_games();
-    let mut fens = Vec::new();
-
-    for i in 0..count {
-        let index = i % games.len();
-        fens.push(Fen::from_str(&games[index]).unwrap());
-    }
-
-    fens[0].get_moves();
-
-    let mut durations: Vec<Duration> = Vec::with_capacity(count);
-
-    for i in 0..count {
-        let time: Instant = Instant::now();
-        fens[i].get_moves();
-        durations.push(time.elapsed());
-    }
-
-    let mut total_nanos: u128 = 0;
-    let mut min: Duration = durations[0];
-    let mut max: Duration = durations[0];
-
-    let mut worst_fen: String = fens[0].to_string();
-    let mut best_fen: String = fens[0].to_string();
-
-    for i in 0..count {
-        let duration: Duration = durations[i];
-        total_nanos += duration.as_nanos();
-
-        if duration < min {
-            min = duration;
-            best_fen = fens[i].to_string();
-        }
-
-        if duration > max {
-            max = duration;
-            worst_fen = fens[i].to_string();
-        }
-    }
-
-    durations.sort_unstable();
-
-    let ignore: usize = (count as f32 * 0.1) as usize;
-    let smart_durations: &[Duration] = &durations[ignore..count-ignore];
-    let smart_count: usize = smart_durations.len();
-
-    let mut smart_total_nanos: u128 = 0;
-    for i in 0..smart_count {
-        let duration: Duration = smart_durations[i];
-        smart_total_nanos += duration.as_nanos();
-    }
-
-    let avg: Duration = Duration::from_nanos((total_nanos / count as u128) as u64);
-    let smart_avg: Duration = Duration::from_nanos((smart_total_nanos / smart_count as u128) as u64);
-
-    println!("Min duration {:?} at {}", min, best_fen);
-    println!("Max duration {:?} at {}", max, worst_fen);
-    println!("Average duration {:?}", avg);
-    println!("Middle 80% average {:?}", smart_avg);
-}
-
-pub fn moves_per_second() {
-    let fen = Fen::new();
-
+pub fn moves_per_second(depth: usize, fen: &Fen) {
     let time: Instant = Instant::now();
-    let count = perft(7, &fen).total;
+    let count = perft(depth, &fen).total;
     let duration = time.elapsed();
 
     let duration_seconds = duration.as_secs_f32();
     let nodes_per_second = count as f32 / duration_seconds;
     let million_per_second = nodes_per_second / 1000000.0;
 
-    println!("Getting {} moves took {} seconds, which is {}M nodes per second", count, duration_seconds, million_per_second);
+    println!("Position:\t\t{}\nDepth:\t\t\t{}\nTotal moves:\t\t{}\nTotal seconds:\t\t{}\nMoves per second:\t{}", fen.to_string(), depth, count, duration_seconds, million_per_second);
 }
